@@ -664,7 +664,7 @@ function draw() {
       if (s.dance > 0) {
         const tm = performance.now() / 400; ctx.font = Math.max(12, pr * 1.3) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.font = 'bold ' + Math.max(11, pr * .95) + 'px system-ui';
-        ctx.strokeText('🎤 ♪ Life Goes On ♪', it.p.x, it.p.y - pr * 4.4); ctx.fillText('🎤 ♪ Life Goes On ♪', it.p.x, it.p.y - pr * 4.4);
+        ctx.strokeText('🎤 ♪ Life goes on and on and on and on and on ♪', it.p.x, it.p.y - pr * 4.4); ctx.fillText('🎤 ♪ Life goes on and on and on and on and on ♪', it.p.x, it.p.y - pr * 4.4);
         ctx.font = Math.max(12, pr * 1.3) + 'px serif';
         ['🎵', '🎶', '✨'].forEach((e, j) => ctx.fillText(e, it.p.x + Math.cos(tm + j * 2.1) * pr * 2.3, it.p.y - pr * 1.8 - Math.abs(Math.sin(tm * 1.3 + j)) * pr * 1.8));
       }
@@ -696,7 +696,7 @@ function draw() {
   if (player.alive && player.dance > 0 && state === 'play') {
     ctx.globalAlpha = .10; ctx.fillStyle = hsl((Math.floor(now / 150) % 12) * 30); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#fff';
-    const msg = '🎤 Life Goes On · 🕺 DANCE PARTY! ' + Math.ceil(player.dance) + 's'; ctx.strokeText(msg, W/2, H - 40); ctx.fillText(msg, W/2, H - 40);
+    const msg = '🎤 Life goes on and on and on and on and on · 🕺 ' + Math.ceil(player.dance) + 's'; ctx.strokeText(msg, W/2, H - 40); ctx.fillText(msg, W/2, H - 40);
   }
 
   drawHud();
