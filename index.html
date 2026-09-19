@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, ZARYA_SLEEP = 20, ZARYA_HW = 190, ZARYA_HH = 45;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -46,7 +46,7 @@ const SKINS = [
   {name: 'Bubblegum',  palette: ['#f9a8d4', '#93c5fd']},
 ];
 
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], zarya = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -105,6 +105,17 @@ function newBlanket() {
   return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
 }
 
+// The ZARYA name on the floor: touch it for a 20-second nap on a Zarya-themed bed
+function makeZarya() {
+  let p;
+  for (let i = 0; i < 60; i++) {
+    const a = rand(0, Math.PI*2), d = rand(700, 1300);
+    p = {x: Math.cos(a) * d, y: Math.sin(a) * d};
+    if (hazards.every(h => Math.hypot(h.x - p.x, h.y - p.y) > h.r + 260)) break;
+  }
+  return p;
+}
+
 function newGift() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: GIFT_R, color: pick(['#ef4444','#3b82f6','#a855f7','#10b981','#f59e0b']), ph: rand(0, 6)};
@@ -116,7 +127,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null};
+          palette: [shade(color, -18), color], skinName: null, bed: false, zCD: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -145,6 +156,7 @@ function start() {
   snakes = []; foods = []; shrubs = makeShrubs(); cacti = makeCacti(); hazards = shrubs.concat(cacti); pops = [];
   blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
+  zarya = makeZarya();
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -220,7 +232,7 @@ function steerBot(s, dt) {
     }
   }
 
-  if (dodge(s, hazards, head, px, py, r) || (s.wary && dodge(s, blankets, head, px, py, r))) return;
+  if (dodge(s, hazards, head, px, py, r) || (s.wary && (dodge(s, blankets, head, px, py, r) || dodge(s, [{x: zarya.x, y: zarya.y, r: 150}], head, px, py, r)))) return;
 
   if (s.think <= 0) {
     s.think = rand(0.25, 0.5);
@@ -257,7 +269,7 @@ function update(dt) {
     if (!s.alive) continue;
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
-      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
+      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; s.bed = false; s.zCD = 8; }
       continue;
     }
     if (s.bot) steerBot(s, dt);
@@ -328,6 +340,11 @@ function update(dt) {
         if (s === player) pops.push({x: h.x, y: h.y, text: '🎁 ' + skin.name + ' skin!', t: performance.now()});
         gifts[gi] = newGift();
       }
+    }
+    s.zCD = Math.max(0, s.zCD - dt);
+    if (!s.sleep && !s.zCD && Math.abs(h.x - zarya.x) < ZARYA_HW + r*0.3 && Math.abs(h.y - zarya.y) < ZARYA_HH + r*0.3) {
+      s.sleep = ZARYA_SLEEP; s.bed = true; s.boost = false;
+      if (s === player) pops.push({x: h.x, y: h.y, text: 'ZARYA 💗 Zzz…', t: performance.now()});
     }
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
@@ -472,6 +489,62 @@ function drawGift(px, py, pr, color) {
   ctx.beginPath(); ctx.arc(px - w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.arc(px + w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.fill();
 }
 
+const LETTERS = {
+  Z: [[[0,0],[1,0],[0,1],[1,1]]],
+  A: [[[0,1],[.5,0],[1,1]], [[.2,.62],[.8,.62]]],
+  R: [[[0,1],[0,0],[.8,0],[1,.15],[1,.4],[.8,.55],[0,.55]], [[.5,.55],[1,1]]],
+  Y: [[[0,0],[.5,.5],[1,0]], [[.5,.5],[.5,1]]],
+};
+
+function drawZaryaSign() {
+  const cx = zarya.x, cy = zarya.y;
+  const pad = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([u, v]) => project(cx + u*(ZARYA_HW+20), cy + v*(ZARYA_HH+25), 1));
+  if (pad.some(q => !q)) return;
+  ctx.fillStyle = 'rgba(168,85,247,.28)'; ctx.beginPath();
+  pad.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill();
+  const k = pad[0].k;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [w, col] of [[16, 'rgba(244,114,182,.30)'], [7, '#f472b6'], [2.5, '#fdf2f8']]) {
+    ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, w * k * 1.3); ctx.beginPath();
+    'ZARYA'.split('').forEach((ch, i) => {
+      const left = cx - ZARYA_HW + 5 + i * 76;
+      for (const stroke of LETTERS[ch]) stroke.forEach(([u, v], j) => {
+        const q = project(left + u * 62, cy - ZARYA_HH + v * ZARYA_HH * 2, 2); if (!q) return;
+        j ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+      });
+    });
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
+  const t = project(cx, cy, 90);
+  if (t) {
+    ctx.font = 'bold ' + Math.max(14, 44 * t.k) + 'px system-ui'; ctx.textAlign = 'center';
+    ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(60,10,90,.8)'; ctx.fillStyle = '#fbcfe8';
+    ctx.strokeText('💗 ZARYA 💗', t.x, t.y); ctx.fillText('💗 ZARYA 💗', t.x, t.y);
+  }
+}
+
+// Pink-and-purple bed that appears under a snake napping on the ZARYA sign
+function drawZaryaBed(s) {
+  const h = s.segs[0], c = Math.cos(s.angle), sn = Math.sin(s.angle);
+  const quad = (u0, u1, v0, v1, z) => [[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u, v]) => project(h.x + u*c - v*sn, h.y + u*sn + v*c, z));
+  const fill = (pts, color) => { if (pts.some(q => !q)) return false; ctx.fillStyle = color; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); return true; };
+  if (!fill(quad(-115, 55, -52, 52, 1), '#7c3aed')) return;          // frame
+  fill(quad(-108, 48, -44, 44, 4), '#fbcfe8');                      // mattress
+  fill(quad(-100, 6, -42, 42, 7), '#c026d3');                       // blanket
+  fill(quad(-100, 6, -8, 8, 8), '#f0abfc');                         // blanket stripe
+  fill(quad(14, 44, -30, 30, 9), '#ffffff');                        // pillow
+  const m = project(h.x + 29*c, h.y + 29*sn, 12);
+  if (m) {
+    ctx.textAlign = 'center'; ctx.fillStyle = '#be185d'; ctx.font = 'bold ' + Math.max(7, 15 * m.k) + 'px system-ui';
+    ctx.fillText('ZARYA', m.x, m.y);
+  }
+  for (const [u, v, e] of [[-80, -22, '⭐'], [-50, 20, '💗'], [-25, -18, '⭐'], [-70, 16, '✨']]) {
+    const q = project(h.x + u*c - v*sn, h.y + u*sn + v*c, 12);
+    if (q) { ctx.font = Math.max(8, 20 * q.k) + 'px serif'; ctx.textAlign = 'center'; ctx.fillText(e, q.x, q.y); }
+  }
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -528,6 +601,8 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t1.x, t1.y); ctx.fill();
   }
 
+  if (Math.abs(zarya.x - cam.x) < span + 200 && Math.abs(zarya.y - cam.y) < span + 200) drawZaryaSign();
+  for (const s of snakes) if (s.alive && s.sleep > 0 && s.bed) drawZaryaBed(s);
   for (const b of blankets) {
     if (Math.abs(b.x - cam.x) > span || Math.abs(b.y - cam.y) > span) continue;
     drawBlanket(b);
@@ -630,7 +705,7 @@ function draw() {
     ctx.fillStyle = 'rgba(10,15,45,.35)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
     ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
-    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the Zarya bed 💗  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
   }
 
   drawHud();
@@ -659,6 +734,7 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#f0abfc'; ctx.beginPath(); ctx.arc(mx + zarya.x/WORLD_R*mr, my + zarya.y/WORLD_R*mr, 3.5, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#f472b6';
   for (const g of gifts) { ctx.beginPath(); ctx.arc(mx + g.x/WORLD_R*mr, my + g.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#c4b5fd';
@@ -687,8 +763,9 @@ function overlay() {
   ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
+  ctx.fillText('Touch the ZARYA name on the floor 💗 for a 20-second nap on a cozy bed', W/2, H/2 + 116);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 138);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 162);
 }
 
 // ---------- input ----------
