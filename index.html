@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, SIGN_SLEEP = 2, SIGN_R = 110;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, SIGN_SLEEP = 2, SIGN_R = 110, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -46,7 +46,7 @@ const SKINS = [
   {name: 'Bubblegum',  palette: ['#f9a8d4', '#93c5fd']},
 ];
 
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], sign = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], sign = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -116,6 +116,11 @@ function makeSign() {
   return p;
 }
 
+function newDisco() {
+  const p = freeSpot(150, 50);
+  return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
+}
+
 function newGift() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: GIFT_R, color: pick(['#ef4444','#3b82f6','#a855f7','#10b981','#f59e0b']), ph: rand(0, 6)};
@@ -127,7 +132,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, bed: false, zCD: 0};
+          palette: [shade(color, -18), color], skinName: null, bed: false, zCD: 0, dance: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -156,6 +161,7 @@ function start() {
   snakes = []; foods = []; shrubs = makeShrubs(); cacti = makeCacti(); hazards = shrubs.concat(cacti); pops = [];
   blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
+  discos = []; for (let i = 0; i < DISCO_COUNT; i++) discos.push(newDisco());
   sign = makeSign();
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
@@ -267,6 +273,7 @@ function update(dt) {
 
   for (const s of snakes) {
     if (!s.alive) continue;
+    if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
       if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; s.bed = false; s.zCD = 8; }
@@ -339,6 +346,14 @@ function update(dt) {
         s.palette = skin.palette; s.skinName = skin.name;
         if (s === player) pops.push({x: h.x, y: h.y, text: '🎁 ' + skin.name + ' skin!', t: performance.now()});
         gifts[gi] = newGift();
+      }
+    }
+    if (!s.sleep) {
+      const di = discos.findIndex(d => Math.hypot(d.x - h.x, d.y - h.y) < d.r + r);
+      if (di >= 0) {
+        s.dance = DANCE_TIME;
+        if (s === player) pops.push({x: h.x, y: h.y, text: '🕺 Dance party!', t: performance.now()});
+        discos[di] = newDisco();
       }
     }
     s.zCD = Math.max(0, s.zCD - dt);
@@ -539,6 +554,25 @@ function drawSignBed(s) {
   }
 }
 
+function drawDisco(px, py, pr) {
+  const tn = performance.now();
+  ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = Math.max(1, pr * .06); ctx.beginPath(); ctx.moveTo(px, py - pr); ctx.lineTo(px, py - pr * 2.3); ctx.stroke();
+  sphere(px, py, pr, '#9ca3af');
+  ctx.save(); ctx.beginPath(); ctx.arc(px, py, pr, 0, Math.PI*2); ctx.clip();
+  const c = pr / 3;
+  for (let gx = -3; gx < 3; gx++) for (let gy = -3; gy < 3; gy++) {
+    if (Math.hypot((gx + .5) * c, (gy + .5) * c) > pr * 1.05) continue;
+    const lit = (gx + gy + 12 + Math.floor(tn / 120)) % 3 === 0;
+    ctx.fillStyle = lit ? hsl((((gx + 3) * 5 + (gy + 3) * 3 + Math.floor(tn / 90)) % 12) * 30) : ((gx + gy) % 2 ? '#e5e7eb' : '#94a3b8');
+    ctx.globalAlpha = .9; ctx.fillRect(px + gx * c + .5, py + gy * c + .5, c - 1, c - 1);
+  }
+  ctx.restore(); ctx.globalAlpha = 1;
+  ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.arc(px - pr*.35, py - pr*.4, pr*.16, 0, Math.PI*2); ctx.fill();
+  ctx.font = Math.max(10, pr) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+  ctx.fillText('✨', px + Math.cos(tn / 300) * pr * 1.5, py + Math.sin(tn / 300) * pr * .8);
+  ctx.fillText('✨', px - Math.cos(tn / 300) * pr * 1.5, py - Math.sin(tn / 300) * pr * .8);
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -614,9 +648,18 @@ function draw() {
   for (const s of snakes) {
     if (!s.alive) continue;
     const r = radius(s);
+    const dancing = s.dance > 0, tn = performance.now();
     for (let i = s.segs.length - 1; i >= 0; i--) {
-      const g = s.segs[i], p = project(g.x, g.y, r); if (!p) continue;
-      items.push({d: p.depth, p, r, color: s.palette[i % s.palette.length], gx: g.x, gy: g.y, head: i === 0 ? s : null});
+      const g = s.segs[i];
+      let gx = g.x, gy = g.y, gz = r, col = s.palette[i % s.palette.length];
+      if (dancing) {
+        const nb = s.segs[i - 1], ang = nb ? Math.atan2(nb.y - g.y, nb.x - g.x) : s.angle, off = Math.sin(tn / 140 - i * 0.6) * r * 1.1;
+        gx -= Math.sin(ang) * off; gy += Math.cos(ang) * off;
+        gz = r + Math.abs(Math.sin(tn / 170 - i * 0.5)) * r * 1.4;
+        col = hsl((Math.floor((tn / 12 + i * 22) / 10) * 10) % 360);
+      }
+      const p = project(gx, gy, gz); if (!p) continue;
+      items.push({d: p.depth, p, r, z: gz, color: col, gx, gy, head: i === 0 ? s : null});
     }
   }
   shrubs.forEach((sh, i) => {
@@ -626,6 +669,10 @@ function draw() {
   for (const g of gifts) {
     if (Math.abs(g.x - cam.x) > span || Math.abs(g.y - cam.y) > span) continue;
     const p = project(g.x, g.y, 24 + Math.sin(performance.now()/350 + g.ph) * 6); if (p) items.push({d: p.depth, p, r: g.r, gift: true, color: g.color, gx: g.x, gy: g.y});
+  }
+  for (const d of discos) {
+    if (Math.abs(d.x - cam.x) > span || Math.abs(d.y - cam.y) > span) continue;
+    const p = project(d.x, d.y, 55 + Math.sin(performance.now()/400 + d.ph) * 6); if (p) items.push({d: p.depth, p, r: d.r, disco: true, gx: d.x, gy: d.y});
   }
   for (const c of cacti) {
     if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
@@ -637,6 +684,12 @@ function draw() {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
     if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
+    if (it.disco) {
+      const gp = project(it.gx, it.gy, 0);
+      if (gp) { ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*1.1, pr*.4, 0, 0, Math.PI*2); ctx.fill(); }
+      drawDisco(it.p.x, it.p.y, pr);
+      continue;
+    }
     if (it.gift) {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*.9, pr*.32, 0, 0, Math.PI*2); ctx.fill(); }
@@ -667,7 +720,7 @@ function draw() {
     if (it.head) {
       const s = it.head, ex = Math.cos(s.angle + Math.PI/2), ey = Math.sin(s.angle + Math.PI/2);
       for (const side of [-1, 1]) {
-        const ep = project(it.gx + Math.cos(s.angle)*it.r*.55 + ex*it.r*.5*side, it.gy + Math.sin(s.angle)*it.r*.55 + ey*it.r*.5*side, it.r*1.25);
+        const ep = project(it.gx + Math.cos(s.angle)*it.r*.55 + ex*it.r*.5*side, it.gy + Math.sin(s.angle)*it.r*.55 + ey*it.r*.5*side, (it.z || it.r) + it.r*.25);
         if (!ep) continue;
         if (s.sleep > 0) {
           ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(1.5, it.r*.1*ep.k); ctx.beginPath();
@@ -677,8 +730,12 @@ function draw() {
           ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.15*ep.k, 0, Math.PI*2); ctx.fill();
         }
       }
-      const lp = project(it.gx, it.gy, it.r*2.6);
-      if (lp) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.fillText(s.name + (s.sleep > 0 ? ' 💤 ' + Math.ceil(s.sleep) + 's' : ''), lp.x, lp.y); }
+      if (s.dance > 0) {
+        const tm = performance.now() / 400; ctx.font = Math.max(12, pr * 1.3) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+        ['🎵', '🎶', '✨'].forEach((e, j) => ctx.fillText(e, it.p.x + Math.cos(tm + j * 2.1) * pr * 2.3, it.p.y - pr * 1.8 - Math.abs(Math.sin(tm * 1.3 + j)) * pr * 1.8));
+      }
+      const lp = project(it.gx, it.gy, (it.z || it.r) + it.r*1.6);
+      if (lp) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.fillText(s.name + (s.sleep > 0 ? ' 💤 ' + Math.ceil(s.sleep) + 's' : '') + (s.dance > 0 ? ' 🕺 ' + Math.ceil(s.dance) + 's' : ''), lp.x, lp.y); }
     }
   }
 
@@ -700,6 +757,12 @@ function draw() {
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
     ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
     ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the flower bed 🌸  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+  }
+
+  if (player.alive && player.dance > 0 && state === 'play') {
+    ctx.globalAlpha = .10; ctx.fillStyle = hsl((Math.floor(now / 150) % 12) * 30); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
+    ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#fff';
+    const msg = '🕺 DANCE PARTY! ' + Math.ceil(player.dance) + 's'; ctx.strokeText(msg, W/2, H - 40); ctx.fillText(msg, W/2, H - 40);
   }
 
   drawHud();
@@ -741,6 +804,8 @@ function drawHud() {
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('🌸', mx + sign.x/WORLD_R*mr, my + sign.y/WORLD_R*mr + 5);
+  ctx.fillStyle = '#e5e7eb';
+  for (const d of discos) { ctx.beginPath(); ctx.arc(mx + d.x/WORLD_R*mr, my + d.y/WORLD_R*mr, 2.5, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#f472b6';
   for (const g of gifts) { ctx.beginPath(); ctx.arc(mx + g.x/WORLD_R*mr, my + g.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#c4b5fd';
@@ -770,8 +835,9 @@ function overlay() {
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Touch the FLOWER GIRL sign 🌸 for a 2-second nap on a cozy bed', W/2, H/2 + 116);
+  ctx.fillText('Grab a disco ball ✨ to dance for 15 seconds', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 162);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 186);
 }
 
 // ---------- input ----------
