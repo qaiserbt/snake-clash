@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, SIGN_SLEEP = 2, SIGN_R = 110, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -46,7 +46,7 @@ const SKINS = [
   {name: 'Bubblegum',  palette: ['#f9a8d4', '#93c5fd']},
 ];
 
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], sign = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -105,17 +105,6 @@ function newBlanket() {
   return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
 }
 
-// The FLOWER GIRL sign: touch it for a 2-second nap on a cozy bed
-function makeSign() {
-  let p;
-  for (let i = 0; i < 60; i++) {
-    const a = rand(0, Math.PI*2), d = rand(700, 1300);
-    p = {x: Math.cos(a) * d, y: Math.sin(a) * d};
-    if (hazards.every(h => Math.hypot(h.x - p.x, h.y - p.y) > h.r + 180)) break;
-  }
-  return p;
-}
-
 function newDisco() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
@@ -132,7 +121,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, bed: false, zCD: 0, dance: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -162,7 +151,6 @@ function start() {
   blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
   discos = []; for (let i = 0; i < DISCO_COUNT; i++) discos.push(newDisco());
-  sign = makeSign();
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -238,7 +226,7 @@ function steerBot(s, dt) {
     }
   }
 
-  if (dodge(s, hazards, head, px, py, r) || (s.wary && (dodge(s, blankets, head, px, py, r) || dodge(s, [{x: sign.x, y: sign.y, r: 120}], head, px, py, r)))) return;
+  if (dodge(s, hazards, head, px, py, r) || (s.wary && dodge(s, blankets, head, px, py, r))) return;
 
   if (s.think <= 0) {
     s.think = rand(0.25, 0.5);
@@ -276,7 +264,7 @@ function update(dt) {
     if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
-      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; s.bed = false; s.zCD = 8; }
+      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
       continue;
     }
     if (s.bot) steerBot(s, dt);
@@ -355,11 +343,6 @@ function update(dt) {
         if (s === player) pops.push({x: h.x, y: h.y, text: '🕺 Dance party!', t: performance.now()});
         discos[di] = newDisco();
       }
-    }
-    s.zCD = Math.max(0, s.zCD - dt);
-    if (!s.sleep && !s.zCD && Math.hypot(h.x - sign.x, h.y - sign.y) < SIGN_R * 0.85 + r*0.3) {
-      s.sleep = SIGN_SLEEP; s.bed = true; s.boost = false;
-      if (s === player) pops.push({x: h.x, y: h.y, text: 'oops..', t: performance.now()});
     }
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
@@ -504,56 +487,6 @@ function drawGift(px, py, pr, color) {
   ctx.beginPath(); ctx.arc(px - w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.arc(px + w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.fill();
 }
 
-function drawFlowerSign() {
-  const cx = sign.x, cy = sign.y;
-  const g = project(cx, cy, 1); if (!g) return;
-  // floor pad and a ring of flowers marking the touch zone
-  ctx.fillStyle = 'rgba(244,114,182,.22)'; ctx.beginPath(); ctx.ellipse(g.x, g.y, SIGN_R * 1.2 * g.k, SIGN_R * .75 * g.k, 0, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = 'rgba(253,242,248,.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(g.x, g.y, SIGN_R * g.k, SIGN_R * .62 * g.k, 0, 0, Math.PI*2); ctx.stroke();
-  ctx.textAlign = 'center';
-  for (let i = 0; i < 10; i++) {
-    const a = i / 10 * Math.PI * 2, q = project(cx + Math.cos(a) * SIGN_R * .9, cy + Math.sin(a) * SIGN_R * .9, 3);
-    if (q) { ctx.font = Math.max(10, 34 * q.k) + 'px serif'; ctx.fillStyle = '#fff'; ctx.fillText(i % 2 ? '🌷' : '🌸', q.x, q.y); }
-  }
-  // a signboard that always faces the camera
-  const m = project(cx, cy, 150), b = project(cx, cy, 0); if (!m || !b) return;
-  const bw = 270 * m.k, bh = 86 * m.k, x = m.x - bw / 2, y = m.y - bh / 2;
-  ctx.strokeStyle = '#92400e'; ctx.lineWidth = Math.max(3, 9 * m.k); ctx.lineCap = 'round'; ctx.beginPath();
-  for (const dx of [-.33, .33]) { ctx.moveTo(m.x + bw * dx, y + bh * .8); ctx.lineTo(b.x + bw * dx * (b.k / m.k) * .95, b.y); }
-  ctx.stroke(); ctx.lineCap = 'butt';
-  const r = Math.min(bh * .25, 16);
-  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + bw, y, x + bw, y + bh, r); ctx.arcTo(x + bw, y + bh, x, y + bh, r);
-  ctx.arcTo(x, y + bh, x, y, r); ctx.arcTo(x, y, x + bw, y, r); ctx.closePath();
-  ctx.fillStyle = '#fdf2f8'; ctx.fill(); ctx.strokeStyle = '#ec4899'; ctx.lineWidth = Math.max(2, 5 * m.k); ctx.stroke();
-  let fs = bh * .46; ctx.font = 'bold ' + fs + 'px system-ui';
-  const tw = ctx.measureText('FLOWER GIRL').width; if (tw > bw * .86) { fs *= bw * .86 / tw; ctx.font = 'bold ' + fs + 'px system-ui'; }
-  ctx.textBaseline = 'middle'; ctx.fillStyle = '#be185d'; ctx.fillText('FLOWER GIRL', m.x, m.y + bh * .03); ctx.textBaseline = 'alphabetic';
-  ctx.font = Math.max(12, bh * .5) + 'px serif'; ctx.fillStyle = '#fff';
-  ctx.fillText('🌸', x + bw * .02, y + bh * .12); ctx.fillText('🌸', x + bw * .98, y + bh * .12);
-  ctx.fillText('🌼', m.x, y - bh * .05);
-}
-
-// Green, pink and purple bed that appears under a snake napping on the sign
-function drawSignBed(s) {
-  const h = s.segs[0], c = Math.cos(s.angle), sn = Math.sin(s.angle);
-  const quad = (u0, u1, v0, v1, z) => [[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u, v]) => project(h.x + u*c - v*sn, h.y + u*sn + v*c, z));
-  const fill = (pts, color) => { if (pts.some(q => !q)) return false; ctx.fillStyle = color; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); return true; };
-  if (!fill(quad(-115, 55, -52, 52, 1), '#16a34a')) return;          // frame
-  fill(quad(-108, 48, -44, 44, 4), '#f9a8d4');                      // mattress
-  fill(quad(-100, 6, -42, 42, 7), '#7c3aed');                       // blanket
-  fill(quad(-100, 6, -8, 8, 8), '#86efac');                         // blanket stripe
-  fill(quad(14, 44, -30, 30, 9), '#fbcfe8');                        // pillow
-  const m = project(h.x + 29*c, h.y + 29*sn, 12);
-  if (m) {
-    ctx.textAlign = 'center'; ctx.fillStyle = '#6d28d9'; ctx.font = 'bold ' + Math.max(7, 15 * m.k) + 'px system-ui';
-    ctx.fillText('🌸', m.x, m.y);
-  }
-  for (const [u, v, e] of [[-80, -22, '⭐'], [-50, 20, '💗'], [-25, -18, '⭐'], [-70, 16, '✨']]) {
-    const q = project(h.x + u*c - v*sn, h.y + u*sn + v*c, 12);
-    if (q) { ctx.font = Math.max(8, 20 * q.k) + 'px serif'; ctx.textAlign = 'center'; ctx.fillText(e, q.x, q.y); }
-  }
-}
-
 function drawDisco(px, py, pr) {
   const tn = performance.now();
   ctx.strokeStyle = '#e5e7eb'; ctx.lineWidth = Math.max(1, pr * .06); ctx.beginPath(); ctx.moveTo(px, py - pr); ctx.lineTo(px, py - pr * 2.3); ctx.stroke();
@@ -629,8 +562,6 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t1.x, t1.y); ctx.fill();
   }
 
-  if (Math.abs(sign.x - cam.x) < span + 200 && Math.abs(sign.y - cam.y) < span + 200) drawFlowerSign();
-  for (const s of snakes) if (s.alive && s.sleep > 0 && s.bed) drawSignBed(s);
   for (const b of blankets) {
     if (Math.abs(b.x - cam.x) > span || Math.abs(b.y - cam.y) > span) continue;
     drawBlanket(b);
@@ -732,6 +663,9 @@ function draw() {
       }
       if (s.dance > 0) {
         const tm = performance.now() / 400; ctx.font = Math.max(12, pr * 1.3) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.font = 'bold ' + Math.max(11, pr * .95) + 'px system-ui';
+        ctx.strokeText('🎤 ♪ Life Goes On ♪', it.p.x, it.p.y - pr * 4.4); ctx.fillText('🎤 ♪ Life Goes On ♪', it.p.x, it.p.y - pr * 4.4);
+        ctx.font = Math.max(12, pr * 1.3) + 'px serif';
         ['🎵', '🎶', '✨'].forEach((e, j) => ctx.fillText(e, it.p.x + Math.cos(tm + j * 2.1) * pr * 2.3, it.p.y - pr * 1.8 - Math.abs(Math.sin(tm * 1.3 + j)) * pr * 1.8));
       }
       const lp = project(it.gx, it.gy, (it.z || it.r) + it.r*1.6);
@@ -756,31 +690,19 @@ function draw() {
     ctx.fillStyle = 'rgba(10,15,45,.35)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
     ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
-    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the flower bed 🌸  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
   }
 
   if (player.alive && player.dance > 0 && state === 'play') {
     ctx.globalAlpha = .10; ctx.fillStyle = hsl((Math.floor(now / 150) % 12) * 30); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#fff';
-    const msg = '🕺 DANCE PARTY! ' + Math.ceil(player.dance) + 's'; ctx.strokeText(msg, W/2, H - 40); ctx.fillText(msg, W/2, H - 40);
+    const msg = '🎤 Life Goes On · 🕺 DANCE PARTY! ' + Math.ceil(player.dance) + 's'; ctx.strokeText(msg, W/2, H - 40); ctx.fillText(msg, W/2, H - 40);
   }
 
   drawHud();
 }
 
 function drawHud() {
-  // Compass: an arrow that always points at the FLOWER GIRL sign (up on screen = the way you're facing)
-  if (state === 'play' && player.alive) {
-    const h = player.segs[0], dx = sign.x - h.x, dy = sign.y - h.y, dist = Math.hypot(dx, dy);
-    const rel = Math.atan2(dy, dx) - camAngle, ax = Math.sin(rel), ay = -Math.cos(rel), cx = W / 2, cy = 74;
-    ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(cx, cy, 38, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3; ctx.stroke();
-    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.atan2(ax, -ay));
-    ctx.fillStyle = '#fb7185'; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(14, 4); ctx.lineTo(0, -4); ctx.lineTo(-14, 4); ctx.closePath(); ctx.fill();
-    ctx.restore();
-    ctx.font = '18px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🌸', cx, cy + 22);
-    ctx.font = 'bold 14px system-ui'; ctx.fillText(dist < 160 ? 'HERE!' : Math.round(dist / 10) + 'm', cx, cy + 58);
-  }
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + score(player), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
@@ -803,7 +725,6 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
-  ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('🌸', mx + sign.x/WORLD_R*mr, my + sign.y/WORLD_R*mr + 5);
   ctx.fillStyle = '#e5e7eb';
   for (const d of discos) { ctx.beginPath(); ctx.arc(mx + d.x/WORLD_R*mr, my + d.y/WORLD_R*mr, 2.5, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#f472b6';
@@ -834,10 +755,9 @@ function overlay() {
   ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
-  ctx.fillText('Touch the FLOWER GIRL sign 🌸 for a 2-second nap on a cozy bed', W/2, H/2 + 116);
-  ctx.fillText('Grab a disco ball ✨ to dance for 15 seconds', W/2, H/2 + 140);
+  ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 186);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 162);
 }
 
 // ---------- input ----------
@@ -850,11 +770,12 @@ function steer(dx) {
 }
 addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; steer(e.movementX); });
 addEventListener('mousedown', () => {
-  mouse.down = true; if (state !== 'play') start();
+  mouse.down = true; unlockAudio(); if (state !== 'play') start();
   try { if (document.pointerLockElement !== canvas) canvas.requestPointerLock(); } catch (e) {}
 });
 addEventListener('mouseup', () => { mouse.down = false; });
 addEventListener('keydown', e => {
+  if (e.key === 'Enter') unlockAudio();
   if (e.key === 'Enter' && state !== 'play') start();
   if (e.key === ' ') { e.preventDefault(); mouse.down = true; }
 });
@@ -862,13 +783,54 @@ addEventListener('keyup', e => { if (e.key === ' ') mouse.down = false; });
 let lastTouchX = null;
 addEventListener('touchmove', e => { const t = e.touches[0]; if (lastTouchX !== null) steer(t.clientX - lastTouchX); lastTouchX = t.clientX; e.preventDefault(); }, {passive:false});
 addEventListener('touchend', () => { lastTouchX = null; });
-addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; if (state !== 'play') start(); });
+addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; unlockAudio(); if (state !== 'play') start(); });
+
+// ---------- music while you dance ----------
+// If a file named life-goes-on.mp3 sits next to this page it plays; otherwise a built-in disco beat plays.
+let audioCtx = null, synthTimer = null, musicEl = null, musicMissing = false, musicOn = false;
+function unlockAudio() {
+  try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
+}
+function blip(freq, when, dur, type, vol) {
+  const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, when);
+  g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
+  o.connect(g); g.connect(audioCtx.destination); o.start(when); o.stop(when + dur + 0.02);
+}
+function startSynth() {
+  if (synthTimer || !audioCtx) return;
+  const melody = [523, 659, 784, 659, 587, 784, 880, 784], bass = [110, 110, 147, 131];
+  let step = 0;
+  synthTimer = setInterval(() => {
+    const t = audioCtx.currentTime + 0.02;
+    if (step % 4 === 0) { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .15); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.0001, t + .18); o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + .2); }
+    if (step % 2 === 1) blip(7000, t, .04, 'square', .03);
+    if (step % 4 === 0) blip(bass[(step >> 2) % 4], t, .22, 'sawtooth', .12);
+    blip(melody[step % 8], t, .16, 'triangle', .10);
+    step++;
+  }, 230);
+}
+function startMusic() {
+  if (musicOn) return; musicOn = true;
+  const fallback = () => { musicMissing = true; musicEl = null; if (musicOn) startSynth(); };
+  if (!musicMissing) {
+    if (!musicEl) { musicEl = new Audio('life-goes-on.mp3'); musicEl.loop = true; musicEl.addEventListener('error', fallback); }
+    musicEl.play().catch(fallback);
+  } else startSynth();
+}
+function stopMusic() {
+  musicOn = false;
+  if (musicEl) musicEl.pause();
+  if (synthTimer) { clearInterval(synthTimer); synthTimer = null; }
+}
 
 // ---------- loop ----------
 function frame(t) {
   const dt = Math.min(0.05, (t - last) / 1000 || 0); last = t;
   if (state === 'play') update(dt);
   else if (state === 'menu') { for (const s of snakes) if (s.bot) { steerBot(s, dt); } update0(dt); }
+  const wantMusic = state === 'play' && player.alive && player.dance > 0;
+  if (wantMusic !== musicOn) wantMusic ? startMusic() : stopMusic();
   draw();
   requestAnimationFrame(frame);
 }
