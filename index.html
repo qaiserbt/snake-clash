@@ -709,13 +709,29 @@ function draw() {
   drawHud();
 }
 
+// Sign board hanging at the top of the screen: WORK OFFICE while working, NAP TIME while asleep
+function drawOfficeSign() {
+  const napping = player.sleep > 0, cx = W / 2, w = 250, h = 64, x = cx - w / 2, y = 16, r = 12;
+  ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3; ctx.beginPath();
+  ctx.moveTo(cx - 90, 0); ctx.lineTo(cx - 90, y); ctx.moveTo(cx + 90, 0); ctx.lineTo(cx + 90, y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+  ctx.fillStyle = napping ? '#312e81' : '#fef3c7'; ctx.fill();
+  ctx.strokeStyle = napping ? '#818cf8' : '#92400e'; ctx.lineWidth = 5; ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = napping ? '#fff' : '#78350f'; ctx.font = 'bold 26px system-ui';
+  ctx.fillText(napping ? '😴 NAP TIME' : 'WORK OFFICE', cx, y + 30);
+  ctx.fillStyle = napping ? '#c7d2fe' : '#b45309'; ctx.font = '15px system-ui';
+  ctx.fillText(napping ? 'Wake up in ' + Math.ceil(player.sleep) + 's' : '☀️ Nap in ' + Math.ceil(WORK_TIME - player.work) + 's', cx, y + 52);
+}
+
 function drawHud() {
+  if (state === 'play' && player.alive) drawOfficeSign();
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + score(player), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
   ctx.fillText('Best ' + Math.max(best, score(player)) + '   Kills ' + player.kills, 20, 58);
   ctx.fillText('Skin: ' + (player.skinName || 'Classic'), 20, 78);
-  ctx.fillText(player.sleep > 0 ? '😴 Napping…' : '☀️ Nap in ' + Math.ceil(WORK_TIME - player.work) + 's', 20, 98);
 
   // Leaderboard
   const top = snakes.filter(s => s.alive).sort((a, b) => score(b) - score(a)).slice(0, 8);
