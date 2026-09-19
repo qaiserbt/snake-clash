@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, WORK_TIME = 10, NAP_TIME = 5;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, WORK_TIME = 10, NAP_TIME = 10;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -764,7 +764,7 @@ function overlay() {
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
-  ctx.fillText('Every snake works for 10 seconds, then naps for 5 right where it is', W/2, H/2 + 140);
+  ctx.fillText('Every snake works for 10 seconds, then naps for 10 right where it is', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
 }
