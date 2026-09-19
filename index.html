@@ -344,7 +344,7 @@ function update(dt) {
     s.zCD = Math.max(0, s.zCD - dt);
     if (!s.sleep && !s.zCD && Math.hypot(h.x - heart.x, h.y - heart.y) < HEART_R * 0.85 + r*0.3) {
       s.sleep = HEART_SLEEP; s.bed = true; s.boost = false;
-      if (s === player) pops.push({x: h.x, y: h.y, text: '❤️ Zzz…', t: performance.now()});
+      if (s === player) pops.push({x: h.x, y: h.y, text: 'oops..', t: performance.now()});
     }
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
@@ -697,6 +697,18 @@ function draw() {
 }
 
 function drawHud() {
+  // Heart compass: an arrow that always points at the heart on the floor (up on screen = the way you're facing)
+  if (state === 'play' && player.alive) {
+    const h = player.segs[0], dx = heart.x - h.x, dy = heart.y - h.y, dist = Math.hypot(dx, dy);
+    const rel = Math.atan2(dy, dx) - camAngle, ax = Math.sin(rel), ay = -Math.cos(rel), cx = W / 2, cy = 74;
+    ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(cx, cy, 38, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.atan2(ax, -ay));
+    ctx.fillStyle = '#fb7185'; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(14, 4); ctx.lineTo(0, -4); ctx.lineTo(-14, 4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+    ctx.font = '18px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('❤️', cx, cy + 22);
+    ctx.font = 'bold 14px system-ui'; ctx.fillText(dist < 160 ? 'HERE!' : Math.round(dist / 10) + 'm', cx, cy + 58);
+  }
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + score(player), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
@@ -719,7 +731,7 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
-  ctx.fillStyle = '#fb7185'; ctx.beginPath(); ctx.arc(mx + heart.x/WORLD_R*mr, my + heart.y/WORLD_R*mr, 3.5, 0, Math.PI*2); ctx.fill();
+  ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('❤️', mx + heart.x/WORLD_R*mr, my + heart.y/WORLD_R*mr + 5);
   ctx.fillStyle = '#f472b6';
   for (const g of gifts) { ctx.beginPath(); ctx.arc(mx + g.x/WORLD_R*mr, my + g.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#c4b5fd';
