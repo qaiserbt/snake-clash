@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -29,7 +29,7 @@ const BASE_SPEED = 85, BOOST_SPEED = 160, TURN = 3.6, MIN_BOOST_LEN = 12;
 const COLORS = ['#34d399','#f87171','#60a5fa','#fbbf24','#c084fc','#f472b6','#2dd4bf','#fb923c','#a3e635','#38bdf8'];
 const NAMES = ['Viper','Mamba','Cobra','Slinky','Noodle','Python','Rattler','Asp','Boa','Fang','Zig','Zag','Nagini','Basil','Hiss','Coil'];
 
-let shrubs = [], pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -49,7 +49,7 @@ function freeSpot(margin, clear) {
   let p;
   for (let i = 0; i < 30; i++) {
     p = randomPointInWorld(margin);
-    if (shrubs.every(sh => Math.hypot(sh.x - p.x, sh.y - p.y) > sh.r + clear)) break;
+    if (hazards.every(sh => Math.hypot(sh.x - p.x, sh.y - p.y) > sh.r + clear)) break;
   }
   return p;
 }
@@ -62,6 +62,20 @@ function makeShrubs() {
       if (Math.hypot(p.x, p.y) < 650) continue;   // keep the start area clear
       if (list.some(o => Math.hypot(o.x - p.x, o.y - p.y) < o.r + r + 40)) continue;
       list.push({x: p.x, y: p.y, r}); break;
+    }
+  }
+  return list;
+}
+
+function makeCacti() {
+  const list = [];
+  for (let i = 0; i < CACTUS_COUNT; i++) {
+    for (let t = 0; t < 40; t++) {
+      const p = randomPointInWorld(150);
+      if (Math.hypot(p.x, p.y) < 650) continue;
+      if (shrubs.some(o => Math.hypot(o.x - p.x, o.y - p.y) < o.r + CACTUS_R + 40)) continue;
+      if (list.some(o => Math.hypot(o.x - p.x, o.y - p.y) < CACTUS_R * 2 + 60)) continue;
+      list.push({x: p.x, y: p.y, r: CACTUS_R}); break;
     }
   }
   return list;
@@ -98,7 +112,7 @@ function fillFood() {
 }
 
 function start() {
-  snakes = []; foods = []; shrubs = makeShrubs(); pops = [];
+  snakes = []; foods = []; shrubs = makeShrubs(); cacti = makeCacti(); hazards = shrubs.concat(cacti); pops = [];
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -117,9 +131,23 @@ function kill(s, killer, why) {
   }
   if (s === player) {
     state = 'dead';
-    deathMsg = why === 'bush' ? 'Ouch! Prickly bush 🌵' : why === 'wall' ? 'You hit the wall!' : 'You got clashed!';
+    deathMsg = why === 'bush' ? 'Ouch! Prickly bush 🌿' : why === 'wall' ? 'You hit the wall!' : 'You got clashed!';
     const sc = score(s);
     if (sc > best) { best = sc; try { localStorage.setItem('clash-best', best); } catch (e) {} }
+  }
+}
+
+// Touching a cactus cuts you shorter (and scatters pellets); the player also scores kills
+function hurtByCactus(s) {
+  s.cd = 1.5;
+  const lose = Math.max(0, Math.min(CACTUS_LOSS, s.segs.length - 6));
+  for (let i = 0; i < lose; i++) {
+    const t = s.segs.pop();
+    foods.push({x: t.x + rand(-10, 10), y: t.y + rand(-10, 10), v: 0.8, color: s.color, drop: true});
+  }
+  if (s === player) {
+    player.kills += CACTUS_KILLS;
+    pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '+' + CACTUS_KILLS + ' kills' + (lose ? '  -' + lose : ''), t: performance.now()});
   }
 }
 
@@ -147,7 +175,7 @@ function steerBot(s, dt) {
     }
   }
 
-  for (const sh of shrubs) {
+  for (const sh of hazards) {
     const dx = sh.x - head.x, dy = sh.y - head.y;
     if (Math.hypot(sh.x - px, sh.y - py) < sh.r + r + 45 || Math.hypot(dx, dy) < sh.r + r + 60) {
       const cross = Math.cos(s.angle) * dy - Math.sin(s.angle) * dx;
@@ -241,6 +269,8 @@ function update(dt) {
     const h = s.segs[0], r = radius(s);
     if (Math.hypot(h.x, h.y) > WORLD_R) { kill(s, null, 'wall'); continue; }
     if (shrubs.some(sh => Math.hypot(sh.x - h.x, sh.y - h.y) < sh.r * 0.85 + r * 0.5)) { kill(s, null, 'bush'); continue; }
+    s.cd = Math.max(0, (s.cd || 0) - dt);
+    if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
     for (const o of snakes) {
       if (o === s || !o.alive) continue;
       const lim = radius(o) + r * 0.6;
@@ -329,6 +359,29 @@ function drawFruit(kind, px, py, pr) {
   else { ctx.beginPath(); ctx.arc(px, py - pr*.85, pr*.14, 0, Math.PI*2); ctx.fill(); }
 }
 
+function pill(cx, yTop, yBot, w) {
+  ctx.beginPath(); ctx.arc(cx, yTop + w/2, w/2, Math.PI, 0);
+  ctx.lineTo(cx + w/2, yBot); ctx.lineTo(cx - w/2, yBot); ctx.closePath(); ctx.fill();
+}
+
+function drawCactus(x, y) {
+  const b = project(x, y, 0), t = project(x, y, CACTUS_H); if (!b || !t) return;
+  const k = b.k, w = 26 * k, hgt = b.y - t.y;
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(b.x, b.y, w * 1.2, w * .38, 0, 0, Math.PI*2); ctx.fill();
+  ctx.fillStyle = '#22c55e';
+  for (const [side, lo, hi] of [[-1, .45, .78], [1, .32, .6]]) {
+    const off = w * 1.05, ay = b.y - hgt * lo, aTop = b.y - hgt * hi, aw = w * .6;
+    ctx.fillRect(side > 0 ? b.x : b.x - off, ay - aw / 2, off, aw);
+    pill(b.x + side * off, aTop, ay + aw / 2, aw);
+  }
+  const g = ctx.createLinearGradient(b.x - w/2, 0, b.x + w/2, 0);
+  g.addColorStop(0, '#15803d'); g.addColorStop(.5, '#4ade80'); g.addColorStop(1, '#166534');
+  ctx.fillStyle = g; pill(b.x, t.y, b.y, w);
+  ctx.fillStyle = '#fef9c3';
+  for (let j = 1; j < 7; j++) { ctx.beginPath(); ctx.arc(b.x + (j % 2 ? -1 : 1) * w * .18, t.y + hgt * j / 7, Math.max(1, k * 1.3), 0, Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(b.x, t.y, w * .2, 0, Math.PI*2); ctx.fill();
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -406,11 +459,16 @@ function draw() {
     if (Math.abs(sh.x - cam.x) > span || Math.abs(sh.y - cam.y) > span) return;
     const p = project(sh.x, sh.y, sh.r * 0.55); if (p) items.push({d: p.depth, p, r: sh.r, shrub: true, gx: sh.x, gy: sh.y, seed: i});
   });
+  for (const c of cacti) {
+    if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
+    const p = project(c.x, c.y, CACTUS_H * 0.5); if (p) items.push({d: p.depth, p, r: c.r, cactus: true, gx: c.x, gy: c.y});
+  }
   items.sort((a, b) => b.d - a.d);
 
   for (const it of items) {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
+    if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
     if (it.shrub) {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(239,68,68,.22)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*1.15, pr*.42, 0, 0, Math.PI*2); ctx.fill(); }
@@ -482,6 +540,8 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#86efac';
+  for (const c of cacti) { ctx.beginPath(); ctx.arc(mx + c.x/WORLD_R*mr, my + c.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#fb923c';
   for (const f of foods) if (f.kind === 'mango') { ctx.beginPath(); ctx.arc(mx + f.x/WORLD_R*mr, my + f.y/WORLD_R*mr, 1.6, 0, Math.PI*2); ctx.fill(); }
   for (const s of snakes) {
@@ -501,9 +561,10 @@ function overlay() {
   if (state === 'dead') ctx.fillText('Score ' + score(player) + '  ·  Kills ' + player.kills + '  ·  Best ' + best, W/2, H/2 + 4);
   else ctx.fillText('Best ' + best, W/2, H/2 + 4);
   ctx.font = '16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.75)';
-  ctx.fillText('Slide left/right on the trackpad to turn (it goes straight when you stop) · hold click (or Space) to boost · eat fruit 🍎🍊🥭 for points · avoid the prickly bushes 🌵', W/2, H/2 + 44);
+  ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
+  ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 90);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 112);
 }
 
 // ---------- input ----------
