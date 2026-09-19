@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, HEART_SLEEP = 20, HEART_R = 110;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, SIGN_SLEEP = 20, SIGN_R = 110;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -46,7 +46,7 @@ const SKINS = [
   {name: 'Bubblegum',  palette: ['#f9a8d4', '#93c5fd']},
 ];
 
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], heart = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], sign = {x: 0, y: 900}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -105,8 +105,8 @@ function newBlanket() {
   return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
 }
 
-// The big heart on the floor: touch it for a 20-second nap on a cozy bed
-function makeHeart() {
+// The FLOWER GIRL sign: touch it for a 20-second nap on a cozy bed
+function makeSign() {
   let p;
   for (let i = 0; i < 60; i++) {
     const a = rand(0, Math.PI*2), d = rand(700, 1300);
@@ -156,7 +156,7 @@ function start() {
   snakes = []; foods = []; shrubs = makeShrubs(); cacti = makeCacti(); hazards = shrubs.concat(cacti); pops = [];
   blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
-  heart = makeHeart();
+  sign = makeSign();
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -232,7 +232,7 @@ function steerBot(s, dt) {
     }
   }
 
-  if (dodge(s, hazards, head, px, py, r) || (s.wary && (dodge(s, blankets, head, px, py, r) || dodge(s, [{x: heart.x, y: heart.y, r: 120}], head, px, py, r)))) return;
+  if (dodge(s, hazards, head, px, py, r) || (s.wary && (dodge(s, blankets, head, px, py, r) || dodge(s, [{x: sign.x, y: sign.y, r: 120}], head, px, py, r)))) return;
 
   if (s.think <= 0) {
     s.think = rand(0.25, 0.5);
@@ -342,8 +342,8 @@ function update(dt) {
       }
     }
     s.zCD = Math.max(0, s.zCD - dt);
-    if (!s.sleep && !s.zCD && Math.hypot(h.x - heart.x, h.y - heart.y) < HEART_R * 0.85 + r*0.3) {
-      s.sleep = HEART_SLEEP; s.bed = true; s.boost = false;
+    if (!s.sleep && !s.zCD && Math.hypot(h.x - sign.x, h.y - sign.y) < SIGN_R * 0.85 + r*0.3) {
+      s.sleep = SIGN_SLEEP; s.bed = true; s.boost = false;
       if (s === player) pops.push({x: h.x, y: h.y, text: 'oops..', t: performance.now()});
     }
     s.cd = Math.max(0, (s.cd || 0) - dt);
@@ -489,28 +489,37 @@ function drawGift(px, py, pr, color) {
   ctx.beginPath(); ctx.arc(px - w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.arc(px + w*.16, y - w*.08, w*.16, 0, Math.PI*2); ctx.fill();
 }
 
-function drawHeartSign() {
-  const cx = heart.x, cy = heart.y, sc = 6.5;
-  const pt = (t, m) => {
-    const hx = 16 * Math.sin(t) ** 3, hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-    return project(cx + hx * sc * m, cy - hy * sc * m, 2);
-  };
-  const outline = m => { const pts = []; for (let t = 0; t < Math.PI * 2; t += 0.12) pts.push(pt(t, m)); return pts.some(q => !q) ? null : pts; };
-  const path = pts => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); };
-  const glow = project(cx, cy, 1);
-  if (glow) { ctx.fillStyle = 'rgba(244,63,94,.18)'; ctx.beginPath(); ctx.ellipse(glow.x, glow.y, HEART_R * 1.25 * glow.k, HEART_R * 0.8 * glow.k, 0, 0, Math.PI*2); ctx.fill(); }
-  const big = outline(1.15), mid = outline(1), small = outline(0.6);
-  if (!big || !mid || !small) return;
-  ctx.fillStyle = 'rgba(244,63,94,.35)'; path(big); ctx.fill();
-  ctx.fillStyle = '#fb7185'; path(mid); ctx.fill();
-  ctx.fillStyle = '#fda4af'; path(small); ctx.fill();
-  ctx.strokeStyle = '#fff1f2'; ctx.lineWidth = Math.max(1.5, 3 * mid[0].k * 1.3); path(mid); ctx.stroke();
-  const t = project(cx, cy, 90 + Math.sin(performance.now()/400) * 8);
-  if (t) { ctx.font = Math.max(16, 80 * t.k) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('❤️', t.x, t.y); }
+function drawFlowerSign() {
+  const cx = sign.x, cy = sign.y;
+  const g = project(cx, cy, 1); if (!g) return;
+  // floor pad and a ring of flowers marking the touch zone
+  ctx.fillStyle = 'rgba(244,114,182,.22)'; ctx.beginPath(); ctx.ellipse(g.x, g.y, SIGN_R * 1.2 * g.k, SIGN_R * .75 * g.k, 0, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = 'rgba(253,242,248,.75)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(g.x, g.y, SIGN_R * g.k, SIGN_R * .62 * g.k, 0, 0, Math.PI*2); ctx.stroke();
+  ctx.textAlign = 'center';
+  for (let i = 0; i < 10; i++) {
+    const a = i / 10 * Math.PI * 2, q = project(cx + Math.cos(a) * SIGN_R * .9, cy + Math.sin(a) * SIGN_R * .9, 3);
+    if (q) { ctx.font = Math.max(10, 34 * q.k) + 'px serif'; ctx.fillStyle = '#fff'; ctx.fillText(i % 2 ? '🌷' : '🌸', q.x, q.y); }
+  }
+  // a signboard that always faces the camera
+  const m = project(cx, cy, 150), b = project(cx, cy, 0); if (!m || !b) return;
+  const bw = 270 * m.k, bh = 86 * m.k, x = m.x - bw / 2, y = m.y - bh / 2;
+  ctx.strokeStyle = '#92400e'; ctx.lineWidth = Math.max(3, 9 * m.k); ctx.lineCap = 'round'; ctx.beginPath();
+  for (const dx of [-.33, .33]) { ctx.moveTo(m.x + bw * dx, y + bh * .8); ctx.lineTo(b.x + bw * dx * (b.k / m.k) * .95, b.y); }
+  ctx.stroke(); ctx.lineCap = 'butt';
+  const r = Math.min(bh * .25, 16);
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + bw, y, x + bw, y + bh, r); ctx.arcTo(x + bw, y + bh, x, y + bh, r);
+  ctx.arcTo(x, y + bh, x, y, r); ctx.arcTo(x, y, x + bw, y, r); ctx.closePath();
+  ctx.fillStyle = '#fdf2f8'; ctx.fill(); ctx.strokeStyle = '#ec4899'; ctx.lineWidth = Math.max(2, 5 * m.k); ctx.stroke();
+  let fs = bh * .46; ctx.font = 'bold ' + fs + 'px system-ui';
+  const tw = ctx.measureText('FLOWER GIRL').width; if (tw > bw * .86) { fs *= bw * .86 / tw; ctx.font = 'bold ' + fs + 'px system-ui'; }
+  ctx.textBaseline = 'middle'; ctx.fillStyle = '#be185d'; ctx.fillText('FLOWER GIRL', m.x, m.y + bh * .03); ctx.textBaseline = 'alphabetic';
+  ctx.font = Math.max(12, bh * .5) + 'px serif'; ctx.fillStyle = '#fff';
+  ctx.fillText('🌸', x + bw * .02, y + bh * .12); ctx.fillText('🌸', x + bw * .98, y + bh * .12);
+  ctx.fillText('🌼', m.x, y - bh * .05);
 }
 
-// Green, pink and purple bed that appears under a snake napping on the heart
-function drawHeartBed(s) {
+// Green, pink and purple bed that appears under a snake napping on the sign
+function drawSignBed(s) {
   const h = s.segs[0], c = Math.cos(s.angle), sn = Math.sin(s.angle);
   const quad = (u0, u1, v0, v1, z) => [[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u, v]) => project(h.x + u*c - v*sn, h.y + u*sn + v*c, z));
   const fill = (pts, color) => { if (pts.some(q => !q)) return false; ctx.fillStyle = color; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); return true; };
@@ -522,7 +531,7 @@ function drawHeartBed(s) {
   const m = project(h.x + 29*c, h.y + 29*sn, 12);
   if (m) {
     ctx.textAlign = 'center'; ctx.fillStyle = '#6d28d9'; ctx.font = 'bold ' + Math.max(7, 15 * m.k) + 'px system-ui';
-    ctx.fillText('❤️', m.x, m.y);
+    ctx.fillText('🌸', m.x, m.y);
   }
   for (const [u, v, e] of [[-80, -22, '⭐'], [-50, 20, '💗'], [-25, -18, '⭐'], [-70, 16, '✨']]) {
     const q = project(h.x + u*c - v*sn, h.y + u*sn + v*c, 12);
@@ -586,8 +595,8 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t1.x, t1.y); ctx.fill();
   }
 
-  if (Math.abs(heart.x - cam.x) < span + 200 && Math.abs(heart.y - cam.y) < span + 200) drawHeartSign();
-  for (const s of snakes) if (s.alive && s.sleep > 0 && s.bed) drawHeartBed(s);
+  if (Math.abs(sign.x - cam.x) < span + 200 && Math.abs(sign.y - cam.y) < span + 200) drawFlowerSign();
+  for (const s of snakes) if (s.alive && s.sleep > 0 && s.bed) drawSignBed(s);
   for (const b of blankets) {
     if (Math.abs(b.x - cam.x) > span || Math.abs(b.y - cam.y) > span) continue;
     drawBlanket(b);
@@ -690,23 +699,23 @@ function draw() {
     ctx.fillStyle = 'rgba(10,15,45,.35)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
     ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
-    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the heart bed ❤️  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the flower bed 🌸  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
   }
 
   drawHud();
 }
 
 function drawHud() {
-  // Heart compass: an arrow that always points at the heart on the floor (up on screen = the way you're facing)
+  // Compass: an arrow that always points at the FLOWER GIRL sign (up on screen = the way you're facing)
   if (state === 'play' && player.alive) {
-    const h = player.segs[0], dx = heart.x - h.x, dy = heart.y - h.y, dist = Math.hypot(dx, dy);
+    const h = player.segs[0], dx = sign.x - h.x, dy = sign.y - h.y, dist = Math.hypot(dx, dy);
     const rel = Math.atan2(dy, dx) - camAngle, ax = Math.sin(rel), ay = -Math.cos(rel), cx = W / 2, cy = 74;
     ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(cx, cy, 38, 0, Math.PI*2); ctx.fill();
     ctx.strokeStyle = '#fb7185'; ctx.lineWidth = 3; ctx.stroke();
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.atan2(ax, -ay));
     ctx.fillStyle = '#fb7185'; ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(14, 4); ctx.lineTo(0, -4); ctx.lineTo(-14, 4); ctx.closePath(); ctx.fill();
     ctx.restore();
-    ctx.font = '18px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('❤️', cx, cy + 22);
+    ctx.font = '18px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🌸', cx, cy + 22);
     ctx.font = 'bold 14px system-ui'; ctx.fillText(dist < 160 ? 'HERE!' : Math.round(dist / 10) + 'm', cx, cy + 58);
   }
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
@@ -731,7 +740,7 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
-  ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('❤️', mx + heart.x/WORLD_R*mr, my + heart.y/WORLD_R*mr + 5);
+  ctx.font = '16px serif'; ctx.textAlign = 'center'; ctx.fillText('🌸', mx + sign.x/WORLD_R*mr, my + sign.y/WORLD_R*mr + 5);
   ctx.fillStyle = '#f472b6';
   for (const g of gifts) { ctx.beginPath(); ctx.arc(mx + g.x/WORLD_R*mr, my + g.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#c4b5fd';
@@ -760,7 +769,7 @@ function overlay() {
   ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
-  ctx.fillText('Touch the big heart ❤️ on the floor for a 20-second nap on a cozy bed', W/2, H/2 + 116);
+  ctx.fillText('Touch the FLOWER GIRL sign 🌸 for a 20-second nap on a cozy bed', W/2, H/2 + 116);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 162);
 }
