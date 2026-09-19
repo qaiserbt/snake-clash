@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, WORK_TIME = 10, NAP_TIME = 10;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 10, INTRO_NAP = 10;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -46,6 +46,7 @@ const SKINS = [
   {name: 'Bubblegum',  palette: ['#f9a8d4', '#93c5fd']},
 ];
 
+let introT = 0;
 let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
@@ -121,7 +122,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0, work: bot ? rand(0, WORK_TIME) : 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -156,7 +157,7 @@ function start() {
   snakes.push(player);
   for (let i = 0; i < BOT_COUNT; i++) snakes.push(makeSnake(pick(NAMES), pick(COLORS), true, Math.floor(rand(8, 30))));
   fillFood();
-  state = 'play';
+  state = 'intro'; introT = 0;   // every game starts at the office
 }
 
 function kill(s, killer, why) {
@@ -264,14 +265,7 @@ function update(dt) {
     if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
-      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; s.work = 0; }
-      continue;
-    }
-    // A working day is WORK_TIME seconds; then the snake naps right where it is
-    s.work += dt;
-    if (s.work >= WORK_TIME) {
-      s.work = 0; s.sleep = NAP_TIME; s.boost = false;
-      if (s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '😴 Nap time', t: performance.now()});
+      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
       continue;
     }
     if (s.bot) steerBot(s, dt);
@@ -709,24 +703,7 @@ function draw() {
   drawHud();
 }
 
-// Sign board hanging at the top of the screen: WORK OFFICE while working, NAP TIME while asleep
-function drawOfficeSign() {
-  const napping = player.sleep > 0, cx = W / 2, w = 250, h = 64, x = cx - w / 2, y = 16, r = 12;
-  ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3; ctx.beginPath();
-  ctx.moveTo(cx - 90, 0); ctx.lineTo(cx - 90, y); ctx.moveTo(cx + 90, 0); ctx.lineTo(cx + 90, y); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  ctx.fillStyle = napping ? '#312e81' : '#fef3c7'; ctx.fill();
-  ctx.strokeStyle = napping ? '#818cf8' : '#92400e'; ctx.lineWidth = 5; ctx.stroke();
-  ctx.textAlign = 'center';
-  ctx.fillStyle = napping ? '#fff' : '#78350f'; ctx.font = 'bold 26px system-ui';
-  ctx.fillText(napping ? '😴 NAP TIME' : 'WORK OFFICE', cx, y + 30);
-  ctx.fillStyle = napping ? '#c7d2fe' : '#b45309'; ctx.font = '15px system-ui';
-  ctx.fillText(napping ? 'Wake up in ' + Math.ceil(player.sleep) + 's' : '☀️ Nap in ' + Math.ceil(WORK_TIME - player.work) + 's', cx, y + 52);
-}
-
 function drawHud() {
-  if (state === 'play' && player.alive) drawOfficeSign();
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + score(player), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
@@ -780,7 +757,7 @@ function overlay() {
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
-  ctx.fillText('Every snake works for 10 seconds, then naps for 10 right where it is', W/2, H/2 + 140);
+  ctx.fillText('Every game starts at the WORK OFFICE: 10 seconds of work, a 10-second nap, then play!', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
 }
@@ -795,20 +772,92 @@ function steer(dx) {
 }
 addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; steer(e.movementX); });
 addEventListener('mousedown', () => {
-  mouse.down = true; unlockAudio(); if (state !== 'play') start();
+  mouse.down = true; unlockAudio(); if (state === 'menu' || state === 'dead') start();
   try { if (document.pointerLockElement !== canvas) canvas.requestPointerLock(); } catch (e) {}
 });
 addEventListener('mouseup', () => { mouse.down = false; });
 addEventListener('keydown', e => {
   if (e.key === 'Enter') unlockAudio();
-  if (e.key === 'Enter' && state !== 'play') start();
+  if (e.key === 'Enter' && state === 'intro') introT = INTRO_WORK + INTRO_NAP;     // skip the office
+  else if (e.key === 'Enter' && state !== 'play') start();
   if (e.key === ' ') { e.preventDefault(); mouse.down = true; }
 });
 addEventListener('keyup', e => { if (e.key === ' ') mouse.down = false; });
 let lastTouchX = null;
 addEventListener('touchmove', e => { const t = e.touches[0]; if (lastTouchX !== null) steer(t.clientX - lastTouchX); lastTouchX = t.clientX; e.preventDefault(); }, {passive:false});
 addEventListener('touchend', () => { lastTouchX = null; });
-addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; unlockAudio(); if (state !== 'play') start(); });
+addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; unlockAudio(); if (state === 'menu' || state === 'dead') start(); });
+
+// ---------- intro: the office ----------
+function drawIntro() {
+  const working = introT < INTRO_WORK, tn = performance.now();
+  const phaseLen = working ? INTRO_WORK : INTRO_NAP, into = working ? introT : introT - INTRO_WORK;
+  const left = Math.max(0, phaseLen - into), u = Math.min(W, H * 1.5) / 800, cx = W / 2;
+  const deskTop = H * 0.70, sc = '#34d399';
+  const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+  const ball = (x, y, r, c) => sphere(x, y, r, c);
+
+  // room
+  ctx.fillStyle = '#e7e5e4'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#a8a29e'; ctx.fillRect(0, H * 0.66, W, H);
+  ctx.fillStyle = '#d6d3d1'; ctx.fillRect(0, H * 0.64, W, H * 0.02);
+  // window
+  const wx = cx - 340 * u, wy = H * 0.14, ww = 150 * u, wh = 170 * u;
+  ctx.fillStyle = working ? '#7dd3fc' : '#1e1b4b'; ctx.fillRect(wx, wy, ww, wh);
+  if (!working) { ctx.fillStyle = '#fef9c3'; for (const [a, b] of [[.2,.2],[.6,.35],[.4,.6],[.75,.7],[.25,.8]]) ctx.fillRect(wx + a * ww, wy + b * wh, 3 * u, 3 * u); ctx.font = 40 * u + 'px serif'; ctx.textAlign = 'center'; ctx.fillText('🌙', wx + ww * .65, wy + wh * .3); }
+  else { ctx.font = 44 * u + 'px serif'; ctx.textAlign = 'center'; ctx.fillText('☀️', wx + ww * .65, wy + wh * .32); }
+  ctx.strokeStyle = '#78350f'; ctx.lineWidth = 6 * u; ctx.strokeRect(wx, wy, ww, wh);
+  ctx.beginPath(); ctx.moveTo(wx + ww / 2, wy); ctx.lineTo(wx + ww / 2, wy + wh); ctx.moveTo(wx, wy + wh / 2); ctx.lineTo(wx + ww, wy + wh / 2); ctx.stroke();
+  // WORK OFFICE sign on the wall
+  const sw = 300 * u, sh = 70 * u, sx = cx - sw / 2 + 60 * u, sy = H * 0.10;
+  ctx.strokeStyle = '#78350f'; ctx.lineWidth = 3 * u; ctx.beginPath(); ctx.moveTo(sx + sw * .2, 0); ctx.lineTo(sx + sw * .2, sy); ctx.moveTo(sx + sw * .8, 0); ctx.lineTo(sx + sw * .8, sy); ctx.stroke();
+  rr(sx, sy, sw, sh, 12 * u); ctx.fillStyle = '#fef3c7'; ctx.fill(); ctx.strokeStyle = '#92400e'; ctx.lineWidth = 5 * u; ctx.stroke();
+  ctx.fillStyle = '#78350f'; ctx.font = 'bold ' + 34 * u + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('WORK OFFICE', sx + sw / 2, sy + sh / 2 + 2 * u); ctx.textBaseline = 'alphabetic';
+
+  if (working) {
+    // desk, monitor, and a hard-working snake
+    ctx.fillStyle = '#92400e'; ctx.fillRect(cx - 280 * u, deskTop, 560 * u, 22 * u);
+    ctx.fillStyle = '#78350f'; ctx.fillRect(cx - 270 * u, deskTop + 22 * u, 540 * u, H);
+    const mx = cx + 150 * u, my = deskTop - 150 * u;
+    ctx.fillStyle = '#374151'; ctx.fillRect(mx + 40 * u, deskTop - 30 * u, 30 * u, 30 * u); rr(mx - 10 * u, my, 130 * u, 100 * u, 8 * u); ctx.fill();
+    ctx.fillStyle = Math.floor(tn / 250) % 2 ? '#bfdbfe' : '#93c5fd'; ctx.fillRect(mx, my + 8 * u, 110 * u, 84 * u);
+    ctx.fillStyle = '#1e3a8a'; for (let i = 0; i < 5; i++) ctx.fillRect(mx + 8 * u, my + (16 + i * 15) * u, (40 + ((i * 37 + Math.floor(tn / 400)) % 5) * 12) * u, 5 * u);
+    for (let i = 14; i >= 0; i--) {
+      const t = i / 14, x = cx - 220 * u + t * 250 * u, y = deskTop - 15 * u - t * t * t * 40 * u + Math.sin(tn / 90 + i) * 2 * u;
+      ball(x, y, 15 * u, i % 2 ? sc : '#10b981');
+      if (i === 14) {
+        for (const dy of [-6, 6]) { ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(x + 6 * u, y - 4 * u + dy * u * .4, 5 * u, 0, Math.PI*2); ctx.fill(); ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(x + 8 * u, y - 4 * u + dy * u * .4, 2.4 * u, 0, Math.PI*2); ctx.fill(); }
+      }
+    }
+    ctx.fillStyle = '#fff'; ctx.font = 28 * u + 'px serif'; ctx.textAlign = 'center'; ctx.fillText('⌨️', cx - 40 * u, deskTop - 4 * u);
+  } else {
+    // lights out: a green, pink and purple bed with a sleeping snake
+    ctx.fillStyle = 'rgba(15,23,42,.55)'; ctx.fillRect(0, 0, W, H);
+    const bx = cx - 250 * u, by = H * 0.60, bw = 500 * u;
+    ctx.fillStyle = '#16a34a'; rr(bx, by, bw, 100 * u, 14 * u); ctx.fill();
+    ctx.fillStyle = '#f9a8d4'; rr(bx + 10 * u, by + 10 * u, bw - 20 * u, 62 * u, 10 * u); ctx.fill();
+    ctx.fillStyle = '#fbcfe8'; rr(bx + 22 * u, by + 14 * u, 110 * u, 44 * u, 16 * u); ctx.fill();
+    for (let i = 0; i < 14; i++) { const x = bx + 120 * u + i * 20 * u, y = by + 40 * u + Math.sin(tn / 500 + i * .4) * 2 * u; ball(x, y, 15 * u, i % 2 ? sc : '#10b981'); }
+    ball(bx + 100 * u, by + 36 * u, 17 * u, sc);
+    ctx.strokeStyle = '#111'; ctx.lineWidth = 2.5 * u; ctx.beginPath(); ctx.moveTo(bx + 102 * u, by + 30 * u); ctx.lineTo(bx + 114 * u, by + 30 * u); ctx.moveTo(bx + 102 * u, by + 40 * u); ctx.lineTo(bx + 114 * u, by + 40 * u); ctx.stroke();
+    ctx.fillStyle = '#7c3aed'; rr(bx + 150 * u, by + 12 * u, bw - 170 * u, 60 * u, 10 * u); ctx.fill();
+    ctx.fillStyle = '#86efac'; ctx.fillRect(bx + 150 * u, by + 34 * u, bw - 170 * u, 14 * u);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+    for (let i = 0; i < 3; i++) { const k = ((tn / 1200) + i / 3) % 1; ctx.globalAlpha = 1 - k; ctx.font = 'bold ' + (18 + i * 10) * u + 'px system-ui'; ctx.fillText('Z', bx + 130 * u + k * 60 * u + i * 26 * u, by - 10 * u - k * 90 * u); }
+    ctx.globalAlpha = 1;
+  }
+
+  // caption and progress bar
+  ctx.textAlign = 'center'; ctx.fillStyle = working ? '#1c1917' : '#fff';
+  ctx.font = 'bold ' + 40 * u + 'px system-ui';
+  ctx.fillText(working ? '💼 Working… ' + Math.ceil(left) + 's' : '😴 Nap time… ' + Math.ceil(left) + 's', cx, H * 0.30 + 70 * u);
+  ctx.font = 20 * u + 'px system-ui'; ctx.fillStyle = working ? '#57534e' : '#c7d2fe';
+  ctx.fillText(working ? 'A snake has to work before it can play.' : 'Sweet dreams! Then it\'s time to play.', cx, H * 0.30 + 100 * u);
+  const bw2 = Math.min(420, W * 0.6), bx2 = cx - bw2 / 2, by2 = H - 60;
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(bx2, by2, bw2, 10);
+  ctx.fillStyle = working ? '#f59e0b' : '#818cf8'; ctx.fillRect(bx2, by2, bw2 * (into / phaseLen), 10);
+  ctx.font = '14px system-ui'; ctx.fillStyle = working ? '#57534e' : '#c7d2fe'; ctx.fillText('Press Enter to skip', cx, H - 28);
+}
 
 // ---------- music while you dance ----------
 // If a file named life-goes-on.mp3 sits next to this page it plays; otherwise a built-in disco beat plays.
@@ -856,7 +905,14 @@ function frame(t) {
   else if (state === 'menu') { for (const s of snakes) if (s.bot) { steerBot(s, dt); } update0(dt); }
   const wantMusic = state === 'play' && player.alive && player.dance > 0;
   if (wantMusic !== musicOn) wantMusic ? startMusic() : stopMusic();
-  draw();
+  if (state === 'intro') {
+    introT += dt;
+    if (introT >= INTRO_WORK + INTRO_NAP) {
+      state = 'play';
+      pops.push({x: player.segs[0].x, y: player.segs[0].y, text: '☀️ Good morning! Go play!', t: performance.now()});
+    }
+  }
+  if (state === 'intro') drawIntro(); else draw();
   requestAnimationFrame(frame);
 }
 // Menu backdrop: let bots roam without a live player
