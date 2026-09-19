@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -70,10 +70,10 @@ function makeShrubs() {
 function makeCacti() {
   const list = [];
   for (let i = 0; i < CACTUS_COUNT; i++) {
-    for (let t = 0; t < 40; t++) {
+    for (let t = 0; t < 80; t++) {
       const p = randomPointInWorld(150);
       if (Math.hypot(p.x, p.y) < 650) continue;
-      if (shrubs.some(o => Math.hypot(o.x - p.x, o.y - p.y) < o.r + CACTUS_R + 40)) continue;
+      if (shrubs.some(o => Math.hypot(o.x - p.x, o.y - p.y) < o.r + CACTUS_R + CACTUS_BUSH_GAP)) continue;
       if (list.some(o => Math.hypot(o.x - p.x, o.y - p.y) < CACTUS_R * 2 + 60)) continue;
       list.push({x: p.x, y: p.y, r: CACTUS_R}); break;
     }
