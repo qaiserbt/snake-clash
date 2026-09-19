@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, WORK_TIME = 10, NAP_TIME = 5;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -121,7 +121,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0, work: bot ? rand(0, WORK_TIME) : 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -264,7 +264,14 @@ function update(dt) {
     if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
-      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
+      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; s.work = 0; }
+      continue;
+    }
+    // A working day is WORK_TIME seconds; then the snake naps right where it is
+    s.work += dt;
+    if (s.work >= WORK_TIME) {
+      s.work = 0; s.sleep = NAP_TIME; s.boost = false;
+      if (s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '😴 Nap time', t: performance.now()});
       continue;
     }
     if (s.bot) steerBot(s, dt);
@@ -708,6 +715,7 @@ function drawHud() {
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
   ctx.fillText('Best ' + Math.max(best, score(player)) + '   Kills ' + player.kills, 20, 58);
   ctx.fillText('Skin: ' + (player.skinName || 'Classic'), 20, 78);
+  ctx.fillText(player.sleep > 0 ? '😴 Napping…' : '☀️ Nap in ' + Math.ceil(WORK_TIME - player.work) + 's', 20, 98);
 
   // Leaderboard
   const top = snakes.filter(s => s.alive).sort((a, b) => score(b) - score(a)).slice(0, 8);
@@ -756,8 +764,9 @@ function overlay() {
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
+  ctx.fillText('Every snake works for 10 seconds, then naps for 5 right where it is', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 162);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
 }
 
 // ---------- input ----------
