@@ -21,7 +21,6 @@ addEventListener('resize', resize); resize();
 const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
-  grape:  {v: 1, n: 60, r: 8,  color: '#7c3aed'},   //  5 points
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
   orange: {v: 3, n: 25, r: 11, color: '#fb923c'},   // 15 points
   mango:  {v: 4, n: 15, r: 13, color: '#fbbf24'},   // 20 points
@@ -324,12 +323,6 @@ function drawMango(px, py, pr) {
 function drawFruit(kind, px, py, pr) {
   ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.arc(px, py, pr*1.6, 0, Math.PI*2); ctx.fill();
   if (kind === 'mango') return drawMango(px, py, pr);
-  if (kind === 'grape') {
-    for (const [dx, dy] of [[-.5,.35],[.5,.35],[0,-.4],[0,.6]]) sphere(px + dx*pr, py + dy*pr, pr*.55, '#7c3aed');
-    ctx.strokeStyle = '#16a34a'; ctx.lineWidth = Math.max(1, pr*.15);
-    ctx.beginPath(); ctx.moveTo(px, py - pr*.7); ctx.lineTo(px + pr*.2, py - pr*1.1); ctx.stroke();
-    return;
-  }
   sphere(px, py, pr, kind === 'apple' ? '#ef4444' : '#fb923c');
   ctx.fillStyle = '#16a34a';
   if (kind === 'apple') { ctx.beginPath(); ctx.ellipse(px + pr*.35, py - pr*1.05, pr*.4, pr*.18, -0.5, 0, Math.PI*2); ctx.fill(); }
@@ -433,12 +426,6 @@ function draw() {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*.9, pr*.32, 0, 0, Math.PI*2); ctx.fill(); }
       drawFruit(it.kind, it.p.x, it.p.y, pr);
-      if (pr > 5) {
-        ctx.font = 'bold ' + Math.max(11, pr * 0.85) + 'px system-ui'; ctx.textAlign = 'center';
-        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = '#fff';
-        const label = '+' + FRUITS[it.kind].v * 5;
-        ctx.strokeText(label, it.p.x, it.p.y - pr * 1.7); ctx.fillText(label, it.p.x, it.p.y - pr * 1.7);
-      }
       continue;
     }
     ctx.globalAlpha = it.food ? .95 : 1;
@@ -514,7 +501,7 @@ function overlay() {
   if (state === 'dead') ctx.fillText('Score ' + score(player) + '  ·  Kills ' + player.kills + '  ·  Best ' + best, W/2, H/2 + 4);
   else ctx.fillText('Best ' + best, W/2, H/2 + 4);
   ctx.font = '16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.75)';
-  ctx.fillText('Slide left/right on the trackpad to turn (it goes straight when you stop) · hold click (or Space) to boost · eat fruit 🍇🍎🍊🥭 for points · avoid the prickly bushes 🌵', W/2, H/2 + 44);
+  ctx.fillText('Slide left/right on the trackpad to turn (it goes straight when you stop) · hold click (or Space) to boost · eat fruit 🍎🍊🥭 for points · avoid the prickly bushes 🌵', W/2, H/2 + 44);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 90);
 }
