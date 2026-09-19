@@ -529,14 +529,14 @@ function drawZaryaBed(s) {
   const h = s.segs[0], c = Math.cos(s.angle), sn = Math.sin(s.angle);
   const quad = (u0, u1, v0, v1, z) => [[u0,v0],[u1,v0],[u1,v1],[u0,v1]].map(([u, v]) => project(h.x + u*c - v*sn, h.y + u*sn + v*c, z));
   const fill = (pts, color) => { if (pts.some(q => !q)) return false; ctx.fillStyle = color; ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); return true; };
-  if (!fill(quad(-115, 55, -52, 52, 1), '#7c3aed')) return;          // frame
-  fill(quad(-108, 48, -44, 44, 4), '#fbcfe8');                      // mattress
-  fill(quad(-100, 6, -42, 42, 7), '#c026d3');                       // blanket
-  fill(quad(-100, 6, -8, 8, 8), '#f0abfc');                         // blanket stripe
-  fill(quad(14, 44, -30, 30, 9), '#ffffff');                        // pillow
+  if (!fill(quad(-115, 55, -52, 52, 1), '#16a34a')) return;          // frame
+  fill(quad(-108, 48, -44, 44, 4), '#f9a8d4');                      // mattress
+  fill(quad(-100, 6, -42, 42, 7), '#7c3aed');                       // blanket
+  fill(quad(-100, 6, -8, 8, 8), '#86efac');                         // blanket stripe
+  fill(quad(14, 44, -30, 30, 9), '#fbcfe8');                        // pillow
   const m = project(h.x + 29*c, h.y + 29*sn, 12);
   if (m) {
-    ctx.textAlign = 'center'; ctx.fillStyle = '#be185d'; ctx.font = 'bold ' + Math.max(7, 15 * m.k) + 'px system-ui';
+    ctx.textAlign = 'center'; ctx.fillStyle = '#6d28d9'; ctx.font = 'bold ' + Math.max(7, 15 * m.k) + 'px system-ui';
     ctx.fillText('ZARYA', m.x, m.y);
   }
   for (const [u, v, e] of [[-80, -22, '⭐'], [-50, 20, '💗'], [-25, -18, '⭐'], [-70, 16, '✨']]) {
@@ -705,7 +705,7 @@ function draw() {
     ctx.fillStyle = 'rgba(10,15,45,.35)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
     ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
-    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the Zarya bed 💗  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText(player.bed ? 'Sweet dreams on the green, pink and purple Zarya bed 💗  (other snakes can still run into you!)' : 'Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
   }
 
   drawHud();
