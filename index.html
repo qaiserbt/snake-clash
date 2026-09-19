@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
@@ -29,7 +29,7 @@ const BASE_SPEED = 85, BOOST_SPEED = 160, TURN = 3.6, MIN_BOOST_LEN = 12;
 const COLORS = ['#34d399','#f87171','#60a5fa','#fbbf24','#c084fc','#f472b6','#2dd4bf','#fb923c','#a3e635','#38bdf8'];
 const NAMES = ['Viper','Mamba','Cobra','Slinky','Noodle','Python','Rattler','Asp','Boa','Fang','Zig','Zag','Nagini','Basil','Hiss','Coil'];
 
-let shrubs = [], cacti = [], hazards = [], pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -81,12 +81,19 @@ function makeCacti() {
   return list;
 }
 
+// A blanket on the floor: touch it and you fall asleep. Used blankets reappear somewhere else.
+function newBlanket() {
+  let p;
+  for (let i = 0; i < 30; i++) { p = freeSpot(150, 60); if (Math.hypot(p.x, p.y) > 600) break; }
+  return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
+}
+
 function makeSnake(name, color, bot, len = 10) {
   const p = freeSpot(500, 120), angle = rand(0, Math.PI*2);
   const segs = [];
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
-          alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0};
+          alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -113,6 +120,7 @@ function fillFood() {
 
 function start() {
   snakes = []; foods = []; shrubs = makeShrubs(); cacti = makeCacti(); hazards = shrubs.concat(cacti); pops = [];
+  blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -135,6 +143,19 @@ function kill(s, killer, why) {
     const sc = score(s);
     if (sc > best) { best = sc; try { localStorage.setItem('clash-best', best); } catch (e) {} }
   }
+}
+
+// Turn away from anything in the list that is close ahead; returns true if it steered
+function dodge(s, list, head, px, py, r) {
+  for (const sh of list) {
+    const dx = sh.x - head.x, dy = sh.y - head.y;
+    if (Math.hypot(sh.x - px, sh.y - py) < sh.r + r + 45 || Math.hypot(dx, dy) < sh.r + r + 60) {
+      const cross = Math.cos(s.angle) * dy - Math.sin(s.angle) * dx;
+      s.target = s.angle + (cross > 0 ? -1.4 : 1.4);
+      return true;
+    }
+  }
+  return false;
 }
 
 // Touching a cactus cuts you shorter (and scatters pellets); the player also scores kills
@@ -175,14 +196,7 @@ function steerBot(s, dt) {
     }
   }
 
-  for (const sh of hazards) {
-    const dx = sh.x - head.x, dy = sh.y - head.y;
-    if (Math.hypot(sh.x - px, sh.y - py) < sh.r + r + 45 || Math.hypot(dx, dy) < sh.r + r + 60) {
-      const cross = Math.cos(s.angle) * dy - Math.sin(s.angle) * dx;
-      s.target = s.angle + (cross > 0 ? -1.4 : 1.4);
-      return;
-    }
-  }
+  if (dodge(s, hazards, head, px, py, r) || (s.wary && dodge(s, blankets, head, px, py, r))) return;
 
   if (s.think <= 0) {
     s.think = rand(0.25, 0.5);
@@ -217,6 +231,11 @@ function update(dt) {
 
   for (const s of snakes) {
     if (!s.alive) continue;
+    if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
+      s.sleep -= dt; s.boost = false;
+      if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
+      continue;
+    }
     if (s.bot) steerBot(s, dt);
     if (s.boost && s.segs.length <= MIN_BOOST_LEN) s.boost = false;
 
@@ -269,6 +288,14 @@ function update(dt) {
     const h = s.segs[0], r = radius(s);
     if (Math.hypot(h.x, h.y) > WORLD_R) { kill(s, null, 'wall'); continue; }
     if (shrubs.some(sh => Math.hypot(sh.x - h.x, sh.y - h.y) < sh.r * 0.85 + r * 0.5)) { kill(s, null, 'bush'); continue; }
+    if (!s.sleep) {
+      const bi = blankets.findIndex(b => Math.hypot(b.x - h.x, b.y - h.y) < b.r + r * 0.3);
+      if (bi >= 0) {
+        s.sleep = SLEEP_TIME; s.boost = false;
+        if (s === player) pops.push({x: h.x, y: h.y, text: '😴 Zzz…', t: performance.now()});
+        blankets[bi] = newBlanket();
+      }
+    }
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
     for (const o of snakes) {
@@ -382,6 +409,24 @@ function drawCactus(x, y) {
   ctx.fillStyle = '#f472b6'; ctx.beginPath(); ctx.arc(b.x, t.y, w * .2, 0, Math.PI*2); ctx.fill();
 }
 
+function drawBlanket(b) {
+  const c = Math.cos(b.a), sn = Math.sin(b.a);
+  const quad = (hw, hh, z) => [[-hw,-hh],[hw,-hh],[hw,hh],[-hw,hh]].map(([u, v]) => project(b.x + u*c - v*sn, b.y + u*sn + v*c, z));
+  const poly = pts => { ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.closePath(); ctx.fill(); };
+  const outer = quad(46, 32, 1); if (outer.some(q => !q)) return;
+  ctx.fillStyle = b.color; poly(outer);
+  const inner = quad(38, 24, 1.5); if (inner.some(q => !q)) return;
+  ctx.fillStyle = shade(b.color, 50); poly(inner);
+  ctx.strokeStyle = shade(b.color, -35); ctx.lineWidth = 2; ctx.beginPath();
+  for (const u of [-20, 0, 20]) {
+    const a = project(b.x + u*c + 24*sn, b.y + u*sn - 24*c, 2), d = project(b.x + u*c - 24*sn, b.y + u*sn + 24*c, 2);
+    if (a && d) { ctx.moveTo(a.x, a.y); ctx.lineTo(d.x, d.y); }
+  }
+  ctx.stroke();
+  const m = project(b.x, b.y, 8);
+  if (m) { ctx.font = Math.max(10, 34 * m.k) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('💤', m.x, m.y); }
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -436,6 +481,11 @@ function draw() {
     const t1 = project(Math.cos(a1)*WORLD_R, Math.sin(a1)*WORLD_R, 260), t2 = project(Math.cos(a2)*WORLD_R, Math.sin(a2)*WORLD_R, 260);
     if (!p1 || !p2 || !t1 || !t2) continue;
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(t2.x, t2.y); ctx.lineTo(t1.x, t1.y); ctx.fill();
+  }
+
+  for (const b of blankets) {
+    if (Math.abs(b.x - cam.x) > span || Math.abs(b.y - cam.y) > span) continue;
+    drawBlanket(b);
   }
 
   // Everything else as depth-sorted spheres, far to near
@@ -494,11 +544,16 @@ function draw() {
       for (const side of [-1, 1]) {
         const ep = project(it.gx + Math.cos(s.angle)*it.r*.55 + ex*it.r*.5*side, it.gy + Math.sin(s.angle)*it.r*.55 + ey*it.r*.5*side, it.r*1.25);
         if (!ep) continue;
-        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.3*ep.k, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.15*ep.k, 0, Math.PI*2); ctx.fill();
+        if (s.sleep > 0) {
+          ctx.strokeStyle = '#111'; ctx.lineWidth = Math.max(1.5, it.r*.1*ep.k); ctx.beginPath();
+          ctx.moveTo(ep.x - it.r*.3*ep.k, ep.y); ctx.lineTo(ep.x + it.r*.3*ep.k, ep.y); ctx.stroke();
+        } else {
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.3*ep.k, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.15*ep.k, 0, Math.PI*2); ctx.fill();
+        }
       }
       const lp = project(it.gx, it.gy, it.r*2.6);
-      if (lp) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.fillText(s.name, lp.x, lp.y); }
+      if (lp) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.fillText(s.name + (s.sleep > 0 ? ' 💤 ' + Math.ceil(s.sleep) + 's' : ''), lp.x, lp.y); }
     }
   }
 
@@ -514,6 +569,13 @@ function draw() {
     ctx.strokeText(o.text, p.x, p.y); ctx.fillText(o.text, p.x, p.y);
   }
   ctx.globalAlpha = 1;
+
+  if (player.alive && player.sleep > 0 && state === 'play') {
+    ctx.fillStyle = 'rgba(10,15,45,.35)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.font = 'bold 44px system-ui';
+    ctx.fillText('😴 Sleeping… ' + Math.ceil(player.sleep) + 's', W/2, H * 0.22);
+    ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
+  }
 
   drawHud();
 }
@@ -540,6 +602,8 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#c4b5fd';
+  for (const b of blankets) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#86efac';
   for (const c of cacti) { ctx.beginPath(); ctx.arc(mx + c.x/WORLD_R*mr, my + c.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#fb923c';
@@ -563,8 +627,9 @@ function overlay() {
   ctx.font = '16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.75)';
   ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
   ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
+  ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds', W/2, H/2 + 92);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 112);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 138);
 }
 
 // ---------- input ----------
