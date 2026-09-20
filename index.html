@@ -54,6 +54,8 @@ const SKINS = [
   {name: 'Zebra',      price: 30,  rarity: 'common',    palette: ['#111827', '#f9fafb']},
   {name: 'Ice',        price: 40,  rarity: 'rare',      palette: ['#67e8f9', '#a5f3fc', '#e0f2fe']},
   {name: 'Lava',       price: 50,  rarity: 'rare',      palette: ['#ef4444', '#f97316', '#fbbf24']},
+  {name: 'Sage Maroon', price: 60, rarity: 'rare',      palette: ['#9caf88', '#800000']},   // sage green and maroon
+  {name: 'Zarya',      price: 75,  rarity: 'epic',      text: 'ZARYA', palette: ['#f472b6', '#a855f7']},   // the name is written along the body
   {name: 'Gold',       price: 80,  rarity: 'rare',      palette: ['#fbbf24', '#f59e0b', '#fde68a']},
   {name: 'Galaxy',     price: 100, rarity: 'epic',      palette: ['#7c3aed', '#4c1d95', '#312e81', '#a78bfa']},
   {name: 'Pixel Cat',  price: 100, rarity: 'epic',      blocky: true, palette: ['#f9a8d4', '#c4b5fd']},
@@ -850,6 +852,7 @@ function draw() {
   for (const s of snakes) {
     if (!s.alive) continue;
     const r = radius(s);
+    const skn = SKIN_BY_NAME[s.skinName], txt = skn && skn.text;
     const dancing = s.dance > 0, tn = performance.now(), blocky = !!(SKIN_BY_NAME[s.skinName] && SKIN_BY_NAME[s.skinName].blocky);
     for (let i = s.segs.length - 1; i >= 0; i--) {
       const g = s.segs[i];
@@ -861,7 +864,7 @@ function draw() {
         col = hsl((Math.floor((tn / 12 + i * 22) / 10) * 10) % 360);
       }
       const p = project(gx, gy, gz); if (!p) continue;
-      items.push({d: p.depth, p, r, z: gz, color: col, gx, gy, head: i === 0 ? s : null, blocky: blocky});
+      items.push({d: p.depth, p, r, z: gz, color: col, gx, gy, head: i === 0 ? s : null, blocky: blocky, letter: txt && i > 0 && i % 2 === 0 ? txt[(i / 2) % txt.length] : null});
     }
   }
   shrubs.forEach((sh, i) => {
@@ -978,6 +981,11 @@ function draw() {
     }
     ctx.globalAlpha = it.food ? .95 : 1;
     if (it.blocky) blockSeg(it.p.x, it.p.y, pr, it.color); else sphere(it.p.x, it.p.y, pr, it.color);
+    if (it.letter && pr > 5) {                          // one letter of the name, on the upper half where the next ball does not cover it
+      ctx.font = 'bold ' + pr * 1.15 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.lineWidth = Math.max(1.5, pr * .16); ctx.strokeStyle = 'rgba(60,10,90,.85)'; ctx.fillStyle = '#fff';
+      ctx.strokeText(it.letter, it.p.x, it.p.y - pr * .15); ctx.fillText(it.letter, it.p.x, it.p.y - pr * .15); ctx.textBaseline = 'alphabetic';
+    }
     ctx.globalAlpha = 1;
     if (it.head) {
       const s = it.head, ex = Math.cos(s.angle + Math.PI/2), ey = Math.sin(s.angle + Math.PI/2);
@@ -1305,6 +1313,7 @@ function drawShop() {
     for (let i = 0; i < n; i++) {
       const px = x1 + (x2 - x1) * i / (n - 1), py = c.y + c.h * .3 + Math.sin(tn / 400 + i * .6) * 4;
       if (it.blocky) blockSeg(px, py, pr, pal[(n - 1 - i) % pal.length]); else sphere(px, py, pr, pal[(n - 1 - i) % pal.length]);
+      if (it.text && i < n - 1 && i % 2 === 0) { ctx.font = 'bold ' + pr * 1.15 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,10,90,.85)'; ctx.fillStyle = '#fff'; const ch = it.text[((n - 1 - i) / 2) % it.text.length]; ctx.strokeText(ch, px, py - pr * .1); ctx.fillText(ch, px, py - pr * .1); ctx.textBaseline = 'alphabetic'; }
       if (i === n - 1) {
         if (it.ears) for (const sd of [-1, 1]) { ctx.fillStyle = pal[0]; ctx.beginPath(); ctx.moveTo(px + sd * pr * .1, py - pr * .7); ctx.lineTo(px + sd * pr * .75, py - pr * 1.8); ctx.lineTo(px + sd * pr * 1.0, py - pr * .5); ctx.closePath(); ctx.fill(); }
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px + pr * .3, py - pr * .25, pr * .28, 0, Math.PI*2); ctx.fill();
