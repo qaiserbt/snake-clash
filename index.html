@@ -59,6 +59,7 @@ const SKINS = [
   {name: 'Pixel Cat',  price: 100, rarity: 'epic',      blocky: true, palette: ['#f9a8d4', '#c4b5fd']},
   {name: 'Rainbow',    price: 120, rarity: 'legendary', legendary: true, palette: Array.from({length: 12}, (_, i) => hsl(i * 30))},
   {name: 'Pastel Cat', price: 150, rarity: 'epic',      palette: ['#c4b5fd', '#f9a8d4', '#a5f3fc']},
+  {name: 'Aurora',     price: 100, rarity: 'legendary', legendary: true, palette: ['#22c55e', '#a855f7', '#ec4899']},   // green, purple and pink
   {name: 'Cat Queen',  price: 300, rarity: 'legendary', legendary: true, ears: true, palette: ['#fde68a', '#f9a8d4', '#c4b5fd', '#a5f3fc']},
 ];   // gift boxes give random skins except the legendary one, which you can only buy
 const SKIN_BY_NAME = Object.fromEntries(SKINS.map(k => [k.name, k]));
