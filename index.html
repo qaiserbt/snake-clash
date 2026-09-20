@@ -21,7 +21,7 @@ addEventListener('resize', resize); resize();
 const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
-  watermelon: {v: 2, n: 4, r: 17, color: '#22c55e', bonus: 10000000},   // 10,000,000 points (added straight to the score)
+  watermelon: {v: 40, n: 4, r: 17, color: '#22c55e'},   // 200 points, and 20 segments of growth
   orange: {v: 3, n: 25, r: 11, color: '#fb923c'},   // 15 points
   mango:  {v: 4, n: 15, r: 13, color: '#fbbf24'},   // 20 points
 };
