@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 5, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 65, ROUTINE_STEP = 2, COIN_COUNT = 60, COIN_R = 9, START_COINS = 25, KILL_COINS = 3;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 5, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 65, ROUTINE_STEP = 2, COIN_COUNT = 60, COIN_R = 9, START_COINS = 25, KILL_COINS = 3, CHEST_COUNT = 8, CHEST_R = 24, CHEST_MIN = 10, CHEST_MAX = 20;
 // Touch the bathtub and you do everything you do in a morning, one step after another
 const MORNING = [
   {e: '🥱', t: 'Waking up and stretching'},
@@ -67,7 +67,7 @@ try {
   owned = JSON.parse(localStorage.getItem('clash-owned') || '["Classic"]'); equipped = localStorage.getItem('clash-equipped') || 'Classic';
 } catch (e) {}
 let introT = 0;
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], chests = [], bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -136,6 +136,11 @@ function makeBath() {          // close to the middle, so it is easy to find
   return p;
 }
 
+function newChest() {
+  const p = freeSpot(150, 60);
+  return {x: p.x, y: p.y, r: CHEST_R, open: 0};
+}
+
 function newDisco() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
@@ -185,6 +190,7 @@ function start() {
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
   discos = []; for (let i = 0; i < DISCO_COUNT; i++) discos.push(newDisco());
   bath = makeBath();
+  chests = []; for (let i = 0; i < CHEST_COUNT; i++) chests.push(newChest());
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -294,6 +300,9 @@ function steerBot(s, dt) {
 }
 
 function update(dt) {
+  for (let i = 0; i < chests.length; i++) {          // an opened chest fades away and a new one appears elsewhere
+    if (chests[i].open > 0) { chests[i].open -= dt; if (chests[i].open <= 0) chests[i] = newChest(); }
+  }
   // Player steering
   player.boost = mouse.down && player.segs.length > MIN_BOOST_LEN;
 
@@ -393,6 +402,13 @@ function update(dt) {
       }
     }
     if (s === player) {
+      for (const c of chests) {
+        if (!c.open && Math.hypot(c.x - h.x, c.y - h.y) < c.r + r + 8) {
+          const n = CHEST_MIN + Math.floor(Math.random() * (CHEST_MAX - CHEST_MIN + 1));
+          c.open = 1.6; wallet += n; saveShop();
+          pops.push({x: c.x, y: c.y, text: '+' + n + ' 🪙', t: performance.now()});
+        }
+      }
       for (let i = coinList.length - 1; i >= 0; i--) {
         const c = coinList[i];
         if (Math.hypot(c.x - h.x, c.y - h.y) < COIN_R + r + 8) { coinList.splice(i, 1); wallet++; saveShop(); }
@@ -603,6 +619,28 @@ function blockSeg(px, py, pr, color) {
   ctx.fillStyle = shade(color, -20); ctx.fillRect(x + w * .38, y + w * .38, w * .24, w * .24);
 }
 
+function drawChest(px, py, pr, openLeft) {
+  const tn = performance.now(), opening = openLeft > 0, k = opening ? 1 - openLeft / 1.6 : 0;
+  const w = pr * 2.3, h = pr * 1.5, x = px - w / 2, y = py - h * .1;
+  if (opening) { ctx.fillStyle = 'rgba(253,224,71,' + (0.35 * (1 - k)) + ')'; ctx.beginPath(); ctx.arc(px, py, pr * (1.8 + k * 1.5), 0, Math.PI*2); ctx.fill(); }
+  ctx.fillStyle = '#92400e'; ctx.fillRect(x, y, w, h * .62);                                   // body
+  ctx.fillStyle = '#78350f'; for (let i = 1; i < 4; i++) ctx.fillRect(x, y + h * .155 * i, w, Math.max(1, pr * .05));
+  ctx.fillStyle = '#fbbf24'; ctx.fillRect(x, y, w * .12, h * .62); ctx.fillRect(x + w * .88, y, w * .12, h * .62);   // gold bands
+  if (opening) {
+    ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.ellipse(px, y, w * .42, h * .16, 0, 0, Math.PI*2); ctx.fill();   // pile of gold
+    ctx.fillStyle = '#b45309'; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w * .08, y - h * .75); ctx.lineTo(x + w * 1.08, y - h * .75); ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();   // lid, propped open
+    ctx.font = Math.max(12, pr * 1.1) + 'px serif'; ctx.textAlign = 'center';
+    for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2 + 1; ctx.globalAlpha = 1 - k; ctx.fillText('🪙', px + Math.cos(a) * pr * (.6 + k * 2.2), y - h * .3 - k * pr * 2.6 + Math.sin(a) * pr * .5); }
+    ctx.globalAlpha = 1;
+  } else {
+    ctx.fillStyle = '#b45309'; ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(px, y - h * .95, x + w, y); ctx.closePath(); ctx.fill();   // rounded lid
+    ctx.fillStyle = '#fbbf24'; ctx.fillRect(x, y - h * .06, w, h * .1);
+    ctx.fillRect(px - w * .07, y + h * .04, w * .14, h * .22);                                   // lock
+    ctx.fillStyle = '#78350f'; ctx.fillRect(px - w * .02, y + h * .1, w * .04, h * .08);
+    const tw = (tn / 700) % 2; if (tw < 1) { ctx.font = Math.max(10, pr) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.globalAlpha = Math.sin(tw * Math.PI); ctx.fillText('✨', x + w * .82, y - h * .55); ctx.globalAlpha = 1; }
+  }
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -694,6 +732,10 @@ function draw() {
     if (Math.abs(sh.x - cam.x) > span || Math.abs(sh.y - cam.y) > span) return;
     const p = project(sh.x, sh.y, sh.r * 0.55); if (p) items.push({d: p.depth, p, r: sh.r, shrub: true, gx: sh.x, gy: sh.y, seed: i});
   });
+  for (const c of chests) {
+    if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
+    const p = project(c.x, c.y, c.r * 0.6); if (p) items.push({d: p.depth, p, r: c.r, chest: true, open: c.open, gx: c.x, gy: c.y});
+  }
   for (const c of coinList) {
     if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
     const p = project(c.x, c.y, 14 + Math.sin(performance.now()/300 + c.ph) * 3); if (p) items.push({d: p.depth, p, r: COIN_R, coin: true, ph: c.ph, gx: c.x, gy: c.y});
@@ -719,6 +761,12 @@ function draw() {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
     if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
+    if (it.chest) {
+      const gp = project(it.gx, it.gy, 0);
+      if (gp) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr * 1.3, pr * .42, 0, 0, Math.PI*2); ctx.fill(); }
+      drawChest(it.p.x, it.p.y, pr, it.open);
+      continue;
+    }
     if (it.coin) {
       const gp = project(it.gx, it.gy, 0), w = Math.abs(Math.cos(performance.now()/350 + it.ph)) * pr + pr * .18;
       if (gp) { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr * .8, pr * .28, 0, 0, Math.PI*2); ctx.fill(); }
@@ -906,6 +954,8 @@ function drawHud() {
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.font = '15px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🛁', mx + bath.x/WORLD_R*mr, my + bath.y/WORLD_R*mr + 5);
+  ctx.fillStyle = '#fbbf24';
+  for (const c of chests) ctx.fillRect(mx + c.x/WORLD_R*mr - 2.5, my + c.y/WORLD_R*mr - 2.5, 5, 5);
   ctx.fillStyle = '#e5e7eb';
   for (const d of discos) { ctx.beginPath(); ctx.arc(mx + d.x/WORLD_R*mr, my + d.y/WORLD_R*mr, 2.5, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#f472b6';
