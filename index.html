@@ -23,7 +23,7 @@ const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS
 const SHARK_COUNT = 4, SHARK_LEN = 9, SHARK_R = 22, SHARK_SPEED = 80, SHARK_HUNT = 135, SHARK_TURN = 2.2, SHARK_SIGHT = 600, SHARK_RESPAWN = 6, SHARK_COINS = 10;
 const FB_SPEED = 480, FB_R = 12, FB_RANGE = 560, FB_COOLDOWN = 0.8;
 // Little people wander around: touch one and your snake turns into a human for a while
-const HUMAN_COUNT = 50, HUMAN_R = 14, HUMAN_SPEED = 45, HUMAN_TIME = 15;
+const HUMAN_COUNT = 50, HUMAN_R = 14, HUMAN_SPEED = 45, HUMAN_TIME = 15, SCARE_TIME = 120;   // sharks stay scared of a snake for SCARE_TIME seconds after it turns into a human
 // Touch the bathtub and you do everything you do in a morning, one step after another
 const MORNING = [
   {e: '🥱', t: 'Waking up and stretching'},
@@ -180,14 +180,14 @@ function updateSharks(dt) {
       sh.think = 0.3; sh.prey = null;
       let bd = SHARK_SIGHT;
       for (const s of snakes) {
-        if (!s.alive || s.human > 0) continue;
+        if (!s.alive || s.human > 0 || s.scary > 0) continue;
         const d = Math.hypot(s.segs[0].x - head.x, s.segs[0].y - head.y) * (s === player ? 0.7 : 1);   // sharks like the player best
         if (d < bd) { bd = d; sh.prey = s; }
       }
     }
     let scary = null, sd = 520;                      // a human within range scares the shark
     for (const s of snakes) {
-      if (!s.alive || !(s.human > 0)) continue;
+      if (!s.alive || !(s.human > 0 || s.scary > 0)) continue;
       const d = Math.hypot(s.segs[0].x - head.x, s.segs[0].y - head.y);
       if (d < sd) { sd = d; scary = s; }
     }
@@ -206,7 +206,7 @@ function updateSharks(dt) {
     for (const s of snakes) {
       if (!s.alive) continue;
       s.biteCD = Math.max(0, (s.biteCD || 0) - dt / Math.max(1, sharks.length));
-      if (s.human > 0) continue;                     // sharks will not touch a human
+      if (s.human > 0 || s.scary > 0) continue;      // sharks will not touch a human, or a snake that just scared them
       const reach = SHARK_R + radius(s) * 0.6;
       for (let i = 0; i < (s.human > 0 ? 1 : s.segs.length); i++) {
         const g = s.segs[i];
@@ -278,7 +278,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0, routine: 0, bathCD: 0, shield: 0, shieldMax: 0, human: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0, routine: 0, bathCD: 0, shield: 0, shieldMax: 0, human: 0, scary: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -440,6 +440,10 @@ function update(dt) {
     if (!s.alive) continue;
     if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.shield > 0) s.shield = Math.max(0, s.shield - dt);
+    if (s.scary > 0) {
+      s.scary = Math.max(0, s.scary - dt);
+      if (s.scary === 0 && s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '🦈 The sharks are not scared anymore!', t: performance.now()});
+    }
     if (s.human > 0) {
       s.human = Math.max(0, s.human - dt);
       if (s.human === 0 && s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '🐍 Back to a snake!', t: performance.now()});
@@ -555,8 +559,8 @@ function update(dt) {
     if (!s.sleep) {
       const hi = humans.findIndex(hm => Math.hypot(hm.x - h.x, hm.y - h.y) < HUMAN_R + r);
       if (hi >= 0) {
-        s.human = HUMAN_TIME;
-        if (s === player) pops.push({x: h.x, y: h.y, text: '🧑 You turned into a human! The sharks are scared 🦈😨', t: performance.now()});
+        s.human = HUMAN_TIME; s.scary = SCARE_TIME;
+        if (s === player) pops.push({x: h.x, y: h.y, text: '🧑 You turned into a human! The sharks are scared for 2 minutes 🦈😨', t: performance.now()});
         humans[hi] = newHuman();
       }
     }
@@ -1192,7 +1196,7 @@ function drawHud() {
     ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#bae6fd';
     ctx.strokeText('🛡️ PROTECTED ' + Math.ceil(player.shield) + 's', W / 2, 100); ctx.fillText('🛡️ PROTECTED ' + Math.ceil(player.shield) + 's', W / 2, 100);
   }
-  if (state === 'play' && player.alive && !(player.human > 0) && sharks.some(sh => Math.hypot(sh.segs[0].x - player.segs[0].x, sh.segs[0].y - player.segs[0].y) < 380)) {
+  if (state === 'play' && player.alive && !(player.human > 0 || player.scary > 0) && sharks.some(sh => Math.hypot(sh.segs[0].x - player.segs[0].x, sh.segs[0].y - player.segs[0].y) < 380)) {
     const pulse = 0.7 + Math.sin(performance.now() / 120) * 0.3;
     ctx.textAlign = 'center'; ctx.font = 'bold 34px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = 'rgba(248,113,113,' + pulse + ')';
     ctx.strokeText('🦈 SHARK NEARBY! 🔥', W / 2, 60); ctx.fillText('🦈 SHARK NEARBY! 🔥', W / 2, 60);
@@ -1204,6 +1208,7 @@ function drawHud() {
   ctx.fillText('Best ' + fmt(Math.max(best, score(player))) + '   Kills ' + player.kills, 20, 58);
   ctx.fillText('Skin: ' + (player.skinName || 'Classic'), 20, 78);
   ctx.fillText('🪙 ' + wallet + ' coins', 20, 98);
+  if (player.scary > 0) { const left = Math.ceil(player.scary); ctx.fillText('🦈😨 Sharks scared  ' + Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0'), 20, 118); }
 
   // Leaderboard
   const top = snakes.filter(s => s.alive).sort((a, b) => score(b) - score(a)).slice(0, 8);
