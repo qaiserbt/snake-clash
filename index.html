@@ -19,6 +19,9 @@ function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeig
 addEventListener('resize', resize); resize();
 
 const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 5, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 65, ROUTINE_STEP = 2, COIN_COUNT = 60, COIN_R = 9, START_COINS = 25, KILL_COINS = 3, CHEST_COUNT = 8, CHEST_R = 24, CHEST_MIN = 10, CHEST_MAX = 20;
+// Sharks hunt snakes; a fireball (F, right-click or the 🔥 button) takes one down
+const SHARK_COUNT = 4, SHARK_LEN = 9, SHARK_R = 22, SHARK_SPEED = 80, SHARK_HUNT = 135, SHARK_TURN = 2.2, SHARK_SIGHT = 600, SHARK_RESPAWN = 6, SHARK_COINS = 10;
+const FB_SPEED = 480, FB_R = 12, FB_RANGE = 560, FB_COOLDOWN = 0.8;
 // Touch the bathtub and you do everything you do in a morning, one step after another
 const MORNING = [
   {e: '🥱', t: 'Waking up and stretching'},
@@ -67,7 +70,7 @@ try {
   owned = JSON.parse(localStorage.getItem('clash-owned') || '["Classic"]'); equipped = localStorage.getItem('clash-equipped') || 'Classic';
 } catch (e) {}
 let introT = 0;
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], chests = [], bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], chests = [], sharks = [], sharkTimers = [], fireballs = [], fireCD = 0, bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -141,6 +144,91 @@ function newChest() {
   return {x: p.x, y: p.y, r: CHEST_R, open: 0};
 }
 
+function newShark() {
+  let p;
+  for (let i = 0; i < 40; i++) {
+    p = randomPointInWorld(250);
+    if (!player || Math.hypot(p.x - player.segs[0].x, p.y - player.segs[0].y) > 700) break;
+  }
+  const a = rand(0, Math.PI * 2), segs = [];
+  for (let i = 0; i < SHARK_LEN; i++) segs.push({x: p.x - Math.cos(a) * i * 10, y: p.y - Math.sin(a) * i * 10});
+  return {segs, angle: a, target: a, think: 0, prey: null, wob: rand(0, 6)};
+}
+const sharkSegR = k => Math.max(7, 19 - k * 1.3);
+
+// A bite on the head kills; a bite on the body eats everything from there to the tail
+function sharkBite(s, i) {
+  if (i < 3) { kill(s, null, 'shark'); return; }
+  if (s.biteCD > 0) return;
+  s.biteCD = 1;
+  const lost = s.segs.splice(i);
+  lost.forEach((g, j) => { if (j % 2 === 0) foods.push({x: g.x, y: g.y, v: 1, color: s.color, drop: true}); });
+  if (s === player) pops.push({x: player.segs[0].x, y: player.segs[0].y, text: '🦈 Chomp! -' + lost.length, t: performance.now()});
+}
+
+function updateSharks(dt) {
+  for (const sh of sharks) {
+    const head = sh.segs[0];
+    sh.think -= dt;
+    if (sh.think <= 0) {
+      sh.think = 0.3; sh.prey = null;
+      let bd = SHARK_SIGHT;
+      for (const s of snakes) {
+        if (!s.alive) continue;
+        const d = Math.hypot(s.segs[0].x - head.x, s.segs[0].y - head.y) * (s === player ? 0.7 : 1);   // sharks like the player best
+        if (d < bd) { bd = d; sh.prey = s; }
+      }
+    }
+    if (Math.hypot(head.x, head.y) > WORLD_R - 200) sh.target = Math.atan2(-head.y, -head.x);
+    else if (sh.prey && sh.prey.alive) sh.target = Math.atan2(sh.prey.segs[0].y - head.y, sh.prey.segs[0].x - head.x);
+    else sh.target = sh.angle + Math.sin(performance.now() / 1200 + sh.wob) * 0.7;
+    sh.angle = normAngle(sh.angle + Math.max(-SHARK_TURN * dt, Math.min(SHARK_TURN * dt, normAngle(sh.target - sh.angle))));
+    const speed = sh.prey ? SHARK_HUNT : SHARK_SPEED;
+    head.x += Math.cos(sh.angle) * speed * dt; head.y += Math.sin(sh.angle) * speed * dt;
+    for (let i = 1; i < sh.segs.length; i++) {
+      const a = sh.segs[i - 1], b = sh.segs[i], dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
+      if (d > 10) { b.x = a.x - dx / d * 10; b.y = a.y - dy / d * 10; }
+    }
+    for (const s of snakes) {
+      if (!s.alive) continue;
+      s.biteCD = Math.max(0, (s.biteCD || 0) - dt / Math.max(1, sharks.length));
+      const reach = SHARK_R + radius(s) * 0.6;
+      for (let i = 0; i < s.segs.length; i++) {
+        const g = s.segs[i];
+        if (Math.abs(g.x - head.x) < reach && Math.abs(g.y - head.y) < reach && Math.hypot(g.x - head.x, g.y - head.y) < reach) { sharkBite(s, i); break; }
+      }
+    }
+  }
+}
+
+function killShark(sh) {
+  sharks.splice(sharks.indexOf(sh), 1); sharkTimers.push(SHARK_RESPAWN);
+  for (let i = 0; i < sh.segs.length; i += 2) foods.push({x: sh.segs[i].x + rand(-8, 8), y: sh.segs[i].y + rand(-8, 8), v: 1.2, color: '#94a3b8', drop: true});
+  if (player && player.alive) {
+    player.kills++; wallet += SHARK_COINS; saveShop();
+    pops.push({x: sh.segs[0].x, y: sh.segs[0].y, text: '🦈 Shark down! +' + SHARK_COINS + ' 🪙', t: performance.now()});
+  }
+}
+
+function fire() {
+  if (state !== 'play' || !player.alive || player.sleep > 0 || player.routine > 0 || fireCD > 0) return;
+  const h = player.segs[0], r = radius(player);
+  fireballs.push({x: h.x + Math.cos(player.angle) * (r + 14), y: h.y + Math.sin(player.angle) * (r + 14), vx: Math.cos(player.angle) * FB_SPEED, vy: Math.sin(player.angle) * FB_SPEED, life: FB_RANGE / FB_SPEED});
+  fireCD = FB_COOLDOWN;
+  if (audioCtx && !muted) { try { blip(240, audioCtx.currentTime, .18, 'sawtooth', .07); blip(120, audioCtx.currentTime + .05, .2, 'square', .05); } catch (e) {} }
+}
+
+function updateFireballs(dt) {
+  for (let i = fireballs.length - 1; i >= 0; i--) {
+    const f = fireballs[i];
+    f.x += f.vx * dt; f.y += f.vy * dt; f.life -= dt;
+    let hit = null;
+    for (const sh of sharks) { for (let k = 0; k < sh.segs.length; k++) { if (Math.hypot(sh.segs[k].x - f.x, sh.segs[k].y - f.y) < FB_R + sharkSegR(k)) { hit = sh; break; } } if (hit) break; }
+    if (hit) { killShark(hit); fireballs.splice(i, 1); continue; }
+    if (f.life <= 0 || Math.hypot(f.x, f.y) > WORLD_R) fireballs.splice(i, 1);
+  }
+}
+
 function newDisco() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
@@ -198,6 +286,8 @@ function start() {
   for (let i = 0; i < 20 && Math.hypot(player.segs[0].x - bath.x, player.segs[0].y - bath.y) < 250; i++) bath = makeBath();   // never start on top of it
   for (let i = 0; i < BOT_COUNT; i++) snakes.push(makeSnake(pick(NAMES), pick(COLORS), true, Math.floor(rand(8, 30))));
   fillFood();
+  sharks = []; sharkTimers = []; fireballs = []; fireCD = 0;
+  for (let i = 0; i < SHARK_COUNT; i++) sharks.push(newShark());
   state = 'intro'; introT = 0;   // every game starts at the office
 }
 
@@ -213,7 +303,7 @@ function kill(s, killer, why) {
   if (s === player) {
     state = 'dead';
     try { if (document.exitPointerLock) document.exitPointerLock(); } catch (e) {}   // show the cursor so the shop can be clicked
-    deathMsg = why === 'bush' ? 'Ouch! Prickly bush 🌿' : why === 'wall' ? 'You hit the wall!' : 'You got clashed!';
+    deathMsg = why === 'bush' ? 'Ouch! Prickly bush 🌿' : why === 'wall' ? 'You hit the wall!' : why === 'shark' ? 'A shark ate you! 🦈' : 'You got clashed!';
     const sc = score(s);
     if (sc > best) { best = sc; try { localStorage.setItem('clash-best', best); } catch (e) {} }
   }
@@ -300,6 +390,7 @@ function steerBot(s, dt) {
 }
 
 function update(dt) {
+  fireCD = Math.max(0, fireCD - dt);
   for (let i = 0; i < chests.length; i++) {          // an opened chest fades away and a new one appears elsewhere
     if (chests[i].open > 0) { chests[i].open -= dt; if (chests[i].open <= 0) chests[i] = newChest(); }
   }
@@ -432,6 +523,9 @@ function update(dt) {
       if (hit) { kill(s, o); break; }
     }
   }
+
+  updateSharks(dt); updateFireballs(dt);
+  for (let i = sharkTimers.length - 1; i >= 0; i--) { sharkTimers[i] -= dt; if (sharkTimers[i] <= 0) { sharkTimers.splice(i, 1); sharks.push(newShark()); } }
 
   // Replace dead bots, keep pellets topped up, drop stale death-pellets cap
   snakes = snakes.filter(s => s.alive || s === player);
@@ -641,6 +735,24 @@ function drawChest(px, py, pr, openLeft) {
   }
 }
 
+function drawFireball(px, py, pr) {
+  const tn = performance.now();
+  for (let i = 3; i >= 1; i--) { ctx.fillStyle = 'rgba(251,146,60,' + (0.2 * (4 - i)) + ')'; ctx.beginPath(); ctx.arc(px + Math.sin(tn / 60 + i) * pr * .2, py + i * pr * .5, pr * (1.1 - i * .12), 0, Math.PI*2); ctx.fill(); }
+  const g = ctx.createRadialGradient(px, py, pr * .1, px, py, pr * 1.3);
+  g.addColorStop(0, '#fef9c3'); g.addColorStop(.35, '#fbbf24'); g.addColorStop(.75, '#f97316'); g.addColorStop(1, 'rgba(239,68,68,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, pr * 1.3, 0, Math.PI*2); ctx.fill();
+}
+
+function drawFireButton() {
+  const b = fireBtn(), ready = fireCD <= 0;
+  rpath(b.x, b.y, b.w, b.h, 12); ctx.fillStyle = ready ? 'rgba(234,88,12,.9)' : 'rgba(0,0,0,.55)'; ctx.fill();
+  if (!ready) { ctx.save(); rpath(b.x, b.y, b.w, b.h, 12); ctx.clip(); ctx.fillStyle = 'rgba(234,88,12,.9)'; ctx.fillRect(b.x, b.y, b.w * (1 - fireCD / FB_COOLDOWN), b.h); ctx.restore(); }
+  ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 2; rpath(b.x, b.y, b.w, b.h, 12); ctx.stroke();
+  ctx.font = 'bold 20px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  ctx.fillText('🔥 Fire  (F)', b.x + b.w / 2, b.y + b.h / 2 + 1); ctx.textBaseline = 'alphabetic';
+}
+const fireBtn = () => ({x: 16, y: H - 118, w: 158, h: 52});
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -732,6 +844,15 @@ function draw() {
     if (Math.abs(sh.x - cam.x) > span || Math.abs(sh.y - cam.y) > span) return;
     const p = project(sh.x, sh.y, sh.r * 0.55); if (p) items.push({d: p.depth, p, r: sh.r, shrub: true, gx: sh.x, gy: sh.y, seed: i});
   });
+  for (const sh of sharks) {
+    sh.segs.forEach((g, k) => {
+      const rk = sharkSegR(k), p = project(g.x, g.y, rk); if (!p) return;
+      items.push({d: p.depth, p, r: rk, z: rk, color: k % 2 ? '#64748b' : '#475569', gx: g.x, gy: g.y, shark: sh, k});
+    });
+  }
+  for (const f of fireballs) {
+    const p = project(f.x, f.y, 26); if (p) items.push({d: p.depth, p, r: FB_R, fire: true, gx: f.x, gy: f.y});
+  }
   for (const c of chests) {
     if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
     const p = project(c.x, c.y, c.r * 0.6); if (p) items.push({d: p.depth, p, r: c.r, chest: true, open: c.open, gx: c.x, gy: c.y});
@@ -761,6 +882,7 @@ function draw() {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
     if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
+    if (it.fire) { drawFireball(it.p.x, it.p.y, pr); continue; }
     if (it.chest) {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr * 1.3, pr * .42, 0, 0, Math.PI*2); ctx.fill(); }
@@ -809,6 +931,25 @@ function draw() {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*.9, pr*.32, 0, 0, Math.PI*2); ctx.fill(); }
       drawFruit(it.kind, it.p.x, it.p.y, pr);
+      continue;
+    }
+    if (it.shark) {                                              // sharks are drawn as a chain of grey balls with fins and teeth
+      const sh = it.shark, k = it.k;
+      sphere(it.p.x, it.p.y, pr, it.color);
+      if (k === 4) { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(it.p.x - pr * .6, it.p.y - pr * .7); ctx.lineTo(it.p.x - pr * .1, it.p.y - pr * 2.4); ctx.lineTo(it.p.x + pr * .7, it.p.y - pr * .7); ctx.closePath(); ctx.fill(); }      // dorsal fin
+      if (k === sh.segs.length - 1) { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(it.p.x, it.p.y); ctx.lineTo(it.p.x - pr * 1.6, it.p.y - pr * 2.6); ctx.lineTo(it.p.x + pr * 1.6, it.p.y - pr * 2.6); ctx.closePath(); ctx.fill(); }   // tail
+      if (k === 0) {
+        const ex = Math.cos(sh.angle + Math.PI / 2), ey = Math.sin(sh.angle + Math.PI / 2), fx = Math.cos(sh.angle), fy = Math.sin(sh.angle);
+        for (const side of [-1, 1]) {
+          const ep = project(it.gx + fx * it.r * .55 + ex * it.r * .55 * side, it.gy + fy * it.r * .55 + ey * it.r * .55 * side, it.r * 1.15); if (!ep) continue;
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r * .24 * ep.k, 0, Math.PI*2); ctx.fill();
+          ctx.fillStyle = '#7f1d1d'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r * .12 * ep.k, 0, Math.PI*2); ctx.fill();
+        }
+        for (let j = -2; j <= 2; j++) {
+          const tp = project(it.gx + fx * it.r * 1.05 + ex * it.r * .22 * j, it.gy + fy * it.r * 1.05 + ey * it.r * .22 * j, it.r * .55); if (!tp) continue;
+          ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.moveTo(tp.x - it.r * .1 * tp.k, tp.y); ctx.lineTo(tp.x + it.r * .1 * tp.k, tp.y); ctx.lineTo(tp.x, tp.y + it.r * .3 * tp.k); ctx.closePath(); ctx.fill();
+        }
+      }
       continue;
     }
     ctx.globalAlpha = it.food ? .95 : 1;
@@ -929,6 +1070,11 @@ function drawBathPointer() {
 }
 
 function drawHud() {
+  if (state === 'play' && player.alive && sharks.some(sh => Math.hypot(sh.segs[0].x - player.segs[0].x, sh.segs[0].y - player.segs[0].y) < 380)) {
+    const pulse = 0.7 + Math.sin(performance.now() / 120) * 0.3;
+    ctx.textAlign = 'center'; ctx.font = 'bold 34px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = 'rgba(248,113,113,' + pulse + ')';
+    ctx.strokeText('🦈 SHARK NEARBY! 🔥', W / 2, 60); ctx.fillText('🦈 SHARK NEARBY! 🔥', W / 2, 60);
+  }
   if (state === 'play' && player.alive) drawBathPointer();
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + fmt(score(player)), 20, 36);
@@ -954,6 +1100,8 @@ function drawHud() {
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.font = '15px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🛁', mx + bath.x/WORLD_R*mr, my + bath.y/WORLD_R*mr + 5);
+  ctx.fillStyle = '#ef4444';
+  for (const sh of sharks) { ctx.beginPath(); ctx.arc(mx + sh.segs[0].x/WORLD_R*mr, my + sh.segs[0].y/WORLD_R*mr, 3.2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#fbbf24';
   for (const c of chests) ctx.fillRect(mx + c.x/WORLD_R*mr - 2.5, my + c.y/WORLD_R*mr - 2.5, 5, 5);
   ctx.fillStyle = '#e5e7eb';
@@ -974,6 +1122,7 @@ function drawHud() {
 
   if (state !== 'play') overlay();
   drawMuteButton();
+  if (state === 'play' && player.alive) drawFireButton();
 }
 
 function overlay() {
@@ -990,9 +1139,10 @@ function overlay() {
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
   ctx.fillText('Every game starts at the WORK OFFICE: 3 seconds of work, a 3-second nap, then play!', W/2, H/2 + 140);
   ctx.fillText('Touch the bathtub 🛁 for a whole morning routine', W/2, H/2 + 164);
+  ctx.fillText('Sharks 🦈 eat snakes! Press F, right-click or tap 🔥 to shoot a fireball', W/2, H/2 + 188);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 190);
-  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Music button is at the bottom-left (or press M)', W/2, H/2 + 216);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 214);
+  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Music button is at the bottom-left (or press M)', W/2, H/2 + 240);
   drawShopButton();
 }
 
@@ -1011,13 +1161,17 @@ addEventListener('mousedown', e => {
   if (state === 'shop') { shopClick(e.clientX, e.clientY); return; }
   if ((state === 'menu' || state === 'dead') && document.pointerLockElement !== canvas && inRect(shopBtn(), e.clientX, e.clientY)) { openShop(); return; }
   if (document.pointerLockElement !== canvas && onMuteBtn(e.clientX, e.clientY)) { unlockAudio(); toggleMute(); return; }
+  if (e.button === 2) { fire(); return; }                                     // right-click = fireball
+  if (state === 'play' && document.pointerLockElement !== canvas && inRect(fireBtn(), e.clientX, e.clientY)) { fire(); return; }
   mouse.down = true; unlockAudio(); if (state === 'menu' || state === 'dead') start();
   try { if (document.pointerLockElement !== canvas) canvas.requestPointerLock(); } catch (e) {}
 });
 addEventListener('mouseup', () => { mouse.down = false; });
+addEventListener('contextmenu', e => e.preventDefault());
 addEventListener('keydown', e => {
   if (state === 'shop') { if (['Escape', 'Enter', 'b', 'B'].includes(e.key)) closeShop(); return; }
   if ((e.key === 'b' || e.key === 'B') && (state === 'menu' || state === 'dead')) { openShop(); return; }
+  if (e.key === 'f' || e.key === 'F') fire();
   if (e.key === 'Enter') unlockAudio();
   if (e.key === 'm' || e.key === 'M') toggleMute();
   if (e.key === 'Enter' && state === 'intro') introT = INTRO_WORK + INTRO_NAP;     // skip the office
@@ -1031,6 +1185,7 @@ addEventListener('touchend', () => { lastTouchX = null; });
 addEventListener('touchstart', e => {
   lastTouchAt = performance.now(); lastTouchX = e.touches[0].clientX; unlockAudio();
   if (state === 'shop') { shopClick(e.touches[0].clientX, e.touches[0].clientY); lastTouchX = null; return; }
+  if (state === 'play' && player.alive && inRect(fireBtn(), e.touches[0].clientX, e.touches[0].clientY)) { fire(); lastTouchX = null; return; }
   if (onMuteBtn(e.touches[0].clientX, e.touches[0].clientY)) { toggleMute(); lastTouchX = null; return; }
   if ((state === 'menu' || state === 'dead') && inRect(shopBtn(), e.touches[0].clientX, e.touches[0].clientY)) { openShop(); lastTouchX = null; return; }
    if (state === 'menu' || state === 'dead') start();
