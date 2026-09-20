@@ -760,6 +760,7 @@ function overlay() {
   ctx.fillText('Every game starts at the WORK OFFICE: 3 seconds of work, a 3-second nap, then play!', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
+  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Press M to turn the music on or off', W/2, H/2 + 192);
 }
 
 // ---------- input ----------
@@ -778,6 +779,7 @@ addEventListener('mousedown', () => {
 addEventListener('mouseup', () => { mouse.down = false; });
 addEventListener('keydown', e => {
   if (e.key === 'Enter') unlockAudio();
+  if (e.key === 'm' || e.key === 'M') { muted = !muted; musicMode = 'changed'; }   // the next frame applies it
   if (e.key === 'Enter' && state === 'intro') introT = INTRO_WORK + INTRO_NAP;     // skip the office
   else if (e.key === 'Enter' && state !== 'play') start();
   if (e.key === ' ') { e.preventDefault(); mouse.down = true; }
@@ -859,9 +861,9 @@ function drawIntro() {
   ctx.font = '14px system-ui'; ctx.fillStyle = working ? '#57534e' : '#c7d2fe'; ctx.fillText('Press Enter to skip', cx, H - 28);
 }
 
-// ---------- music while you dance ----------
-// If a file named life-goes-on.mp3 sits next to this page it plays; otherwise a built-in disco beat plays.
-let audioCtx = null, synthTimer = null, musicEl = null, musicMissing = false, musicOn = false;
+// ---------- music: a calm loop while you play, a disco beat while you dance ----------
+// Both are made up in the browser. If a file named life-goes-on.mp3 sits next to this page, it plays for the dance instead.
+let audioCtx = null, synthTimer = null, synthMode = null, musicEl = null, musicMissing = false, musicMode = null, muted = false;
 function unlockAudio() {
   try { audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)(); audioCtx.resume(); } catch (e) {}
 }
@@ -871,31 +873,40 @@ function blip(freq, when, dur, type, vol) {
   g.gain.setValueAtTime(vol, when); g.gain.exponentialRampToValueAtTime(0.0001, when + dur);
   o.connect(g); g.connect(audioCtx.destination); o.start(when); o.stop(when + dur + 0.02);
 }
-function startSynth() {
-  if (synthTimer || !audioCtx) return;
-  const melody = [523, 659, 784, 659, 587, 784, 880, 784], bass = [110, 110, 147, 131];
+const PLAY_MELODY = [392, 494, 587, 494, 440, 523, 659, 523], PLAY_BASS = [98, 131, 110, 147];
+const DISCO_MELODY = [523, 659, 784, 659, 587, 784, 880, 784], DISCO_BASS = [110, 110, 147, 131];
+function stopSynth() { if (synthTimer) clearInterval(synthTimer); synthTimer = null; synthMode = null; }
+function startSynth(mode) {
+  if (!audioCtx || (synthTimer && synthMode === mode)) return;
+  stopSynth(); synthMode = mode;
   let step = 0;
   synthTimer = setInterval(() => {
     const t = audioCtx.currentTime + 0.02;
-    if (step % 4 === 0) { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .15); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.0001, t + .18); o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + .2); }
-    if (step % 2 === 1) blip(7000, t, .04, 'square', .03);
-    if (step % 4 === 0) blip(bass[(step >> 2) % 4], t, .22, 'sawtooth', .12);
-    blip(melody[step % 8], t, .16, 'triangle', .10);
+    if (mode === 'disco') {
+      if (step % 4 === 0) { const o = audioCtx.createOscillator(), g = audioCtx.createGain(); o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(40, t + .15); g.gain.setValueAtTime(.5, t); g.gain.exponentialRampToValueAtTime(.0001, t + .18); o.connect(g); g.connect(audioCtx.destination); o.start(t); o.stop(t + .2); }
+      if (step % 2 === 1) blip(7000, t, .04, 'square', .03);
+      if (step % 4 === 0) blip(DISCO_BASS[(step >> 2) % 4], t, .22, 'sawtooth', .12);
+      blip(DISCO_MELODY[step % 8], t, .16, 'triangle', .10);
+    } else {
+      if (step % 8 === 0) blip(PLAY_BASS[(step >> 3) % 4], t, .9, 'sine', .10);
+      blip(PLAY_MELODY[step % 8], t, .3, 'sine', .05);
+      if (step % 4 === 2) blip(PLAY_MELODY[(step + 3) % 8] * 2, t, .2, 'triangle', .025);
+    }
     step++;
-  }, 230);
+  }, mode === 'disco' ? 230 : 330);
 }
-function startMusic() {
-  if (musicOn) return; musicOn = true;
-  const fallback = () => { musicMissing = true; musicEl = null; if (musicOn) startSynth(); };
-  if (!musicMissing) {
+// mode: null (silence), 'play' or 'disco'
+function setMusic(mode) {
+  if (muted) mode = null;
+  if (mode === musicMode) return;
+  musicMode = mode;
+  stopSynth(); if (musicEl) musicEl.pause();
+  if (!mode) return;
+  if (mode === 'disco' && !musicMissing) {
+    const fallback = () => { musicMissing = true; musicEl = null; if (musicMode === 'disco') startSynth('disco'); };
     if (!musicEl) { musicEl = new Audio('life-goes-on.mp3'); musicEl.loop = true; musicEl.addEventListener('error', fallback); }
     musicEl.play().catch(fallback);
-  } else startSynth();
-}
-function stopMusic() {
-  musicOn = false;
-  if (musicEl) musicEl.pause();
-  if (synthTimer) { clearInterval(synthTimer); synthTimer = null; }
+  } else startSynth(mode);
 }
 
 // ---------- loop ----------
@@ -903,8 +914,7 @@ function frame(t) {
   const dt = Math.min(0.05, (t - last) / 1000 || 0); last = t;
   if (state === 'play') update(dt);
   else if (state === 'menu') { for (const s of snakes) if (s.bot) { steerBot(s, dt); } update0(dt); }
-  const wantMusic = state === 'play' && player.alive && player.dance > 0;
-  if (wantMusic !== musicOn) wantMusic ? startMusic() : stopMusic();
+  setMusic(state === 'play' && player.alive ? (player.dance > 0 ? 'disco' : 'play') : null);
   if (state === 'intro') {
     introT += dt;
     if (introT >= INTRO_WORK + INTRO_NAP) {
