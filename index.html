@@ -21,7 +21,7 @@ addEventListener('resize', resize); resize();
 const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
-  apple:  {v: 2, n: 35, r: 10, color: '#ef4444'},   // 10 points
+  watermelon: {v: 2, n: 4, r: 17, color: '#22c55e', bonus: 10000000},   // 10,000,000 points (added straight to the score)
   orange: {v: 3, n: 25, r: 11, color: '#fb923c'},   // 15 points
   mango:  {v: 4, n: 15, r: 13, color: '#fbbf24'},   // 20 points
 };
@@ -123,12 +123,13 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
 const spacing = s => radius(s) * 0.7;
-const score = s => Math.floor(s.segs.length * 10 + s.grow * 10);
+const score = s => Math.floor(s.segs.length * 10 + s.grow * 10) + s.bonus;
+const fmt = n => n.toLocaleString('en-US');
 
 function spawnFood(x, y, v, color) {
   foods.push({x, y, v, color: color || pick(COLORS)});
@@ -309,7 +310,9 @@ function update(dt) {
       const f = foods[i];
       if (Math.abs(f.x - head.x) < eatR && Math.abs(f.y - head.y) < eatR && Math.hypot(f.x - head.x, f.y - head.y) < eatR) {
         s.grow += f.v * 0.5;
-        if (f.kind && s === player) pops.push({x: f.x, y: f.y, text: '+' + f.v * 5, color: f.color, t: performance.now()});
+        const bonus = f.kind ? FRUITS[f.kind].bonus || 0 : 0;
+        s.bonus += bonus;
+        if (f.kind && s === player) pops.push({x: f.x, y: f.y, text: '+' + fmt(bonus || f.v * 5), color: f.color, t: performance.now()});
         foods.splice(i, 1);
       }
     }
@@ -430,10 +433,19 @@ function drawMango(px, py, pr) {
 function drawFruit(kind, px, py, pr) {
   ctx.fillStyle = 'rgba(255,255,255,.10)'; ctx.beginPath(); ctx.arc(px, py, pr*1.6, 0, Math.PI*2); ctx.fill();
   if (kind === 'mango') return drawMango(px, py, pr);
-  sphere(px, py, pr, kind === 'apple' ? '#ef4444' : '#fb923c');
-  ctx.fillStyle = '#16a34a';
-  if (kind === 'apple') { ctx.beginPath(); ctx.ellipse(px + pr*.35, py - pr*1.05, pr*.4, pr*.18, -0.5, 0, Math.PI*2); ctx.fill(); }
-  else { ctx.beginPath(); ctx.arc(px, py - pr*.85, pr*.14, 0, Math.PI*2); ctx.fill(); }
+  if (kind === 'watermelon') {
+    ctx.fillStyle = 'rgba(253,224,71,.28)'; ctx.beginPath(); ctx.arc(px, py, pr*2.1, 0, Math.PI*2); ctx.fill();   // golden glow: the jackpot
+    ctx.save(); ctx.translate(px, py); ctx.scale(1.3, 1);
+    sphere(0, 0, pr, '#22c55e');
+    ctx.beginPath(); ctx.arc(0, 0, pr, 0, Math.PI*2); ctx.clip();
+    ctx.strokeStyle = '#166534'; ctx.lineWidth = Math.max(1.5, pr * .16);
+    for (let i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(i * pr * .32, -pr); ctx.quadraticCurveTo(i * pr * .52, 0, i * pr * .32, pr); ctx.stroke(); }
+    ctx.restore();
+    ctx.fillStyle = 'rgba(255,255,255,.45)'; ctx.beginPath(); ctx.ellipse(px - pr * .55, py - pr * .45, pr * .28, pr * .14, -0.6, 0, Math.PI*2); ctx.fill();
+    return;
+  }
+  sphere(px, py, pr, '#fb923c');
+  ctx.fillStyle = '#16a34a'; ctx.beginPath(); ctx.arc(px, py - pr*.85, pr*.14, 0, Math.PI*2); ctx.fill();
 }
 
 function pill(cx, yTop, yBot, w) {
@@ -722,9 +734,9 @@ const onMuteBtn = (x, y) => { const b = muteBtn(); return x >= b.x && x <= b.x +
 
 function drawHud() {
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Score ' + score(player), 20, 36);
+  ctx.fillText('Score ' + fmt(score(player)), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
-  ctx.fillText('Best ' + Math.max(best, score(player)) + '   Kills ' + player.kills, 20, 58);
+  ctx.fillText('Best ' + fmt(Math.max(best, score(player))) + '   Kills ' + player.kills, 20, 58);
   ctx.fillText('Skin: ' + (player.skinName || 'Classic'), 20, 78);
 
   // Leaderboard
@@ -735,7 +747,7 @@ function drawHud() {
   top.forEach((s, i) => {
     ctx.fillStyle = s === player ? '#fbbf24' : 'rgba(255,255,255,.8)';
     ctx.textAlign = 'left'; ctx.fillText((i+1) + '. ' + s.name, W - 180, 56 + i*20);
-    ctx.textAlign = 'right'; ctx.fillText(score(s), W - 24, 56 + i*20);
+    ctx.textAlign = 'right'; ctx.fillText(fmt(score(s)), W - 24, 56 + i*20);
   });
 
   // Minimap
@@ -768,11 +780,11 @@ function overlay() {
   ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
   ctx.font = 'bold 56px system-ui'; ctx.fillText(state === 'dead' ? deathMsg : 'Snake Clash 3D', W/2, H/2 - 40);
   ctx.font = '20px system-ui';
-  if (state === 'dead') ctx.fillText('Score ' + score(player) + '  ·  Kills ' + player.kills + '  ·  Best ' + best, W/2, H/2 + 4);
-  else ctx.fillText('Best ' + best, W/2, H/2 + 4);
+  if (state === 'dead') ctx.fillText('Score ' + fmt(score(player)) + '  ·  Kills ' + player.kills + '  ·  Best ' + fmt(best), W/2, H/2 + 4);
+  else ctx.fillText('Best ' + fmt(best), W/2, H/2 + 4);
   ctx.font = '16px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.75)';
   ctx.fillText('Slide left/right on the trackpad to turn · hold click (or Space) to boost', W/2, H/2 + 44);
-  ctx.fillText('Eat fruit 🍎🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
+  ctx.fillText('Eat fruit 🍉🍊🥭 for points · avoid bushes 🌿 · cactus 🌵 shrinks you but gives +20 kills', W/2, H/2 + 68);
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
   ctx.fillText('Every game starts at the WORK OFFICE: 3 seconds of work, a 3-second nap, then play!', W/2, H/2 + 140);
