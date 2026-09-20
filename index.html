@@ -22,6 +22,8 @@ const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS
 // Sharks hunt snakes; a fireball (F, right-click or the 🔥 button) takes one down
 const SHARK_COUNT = 4, SHARK_LEN = 9, SHARK_R = 22, SHARK_SPEED = 80, SHARK_HUNT = 135, SHARK_TURN = 2.2, SHARK_SIGHT = 600, SHARK_RESPAWN = 6, SHARK_COINS = 10;
 const FB_SPEED = 480, FB_R = 12, FB_RANGE = 560, FB_COOLDOWN = 0.8;
+// Little people wander around: touch one and your snake turns into a human for a while
+const HUMAN_COUNT = 5, HUMAN_R = 14, HUMAN_SPEED = 45, HUMAN_TIME = 15;
 // Touch the bathtub and you do everything you do in a morning, one step after another
 const MORNING = [
   {e: '🥱', t: 'Waking up and stretching'},
@@ -73,7 +75,7 @@ try {
   owned = JSON.parse(localStorage.getItem('clash-owned') || '["Classic"]'); equipped = localStorage.getItem('clash-equipped') || 'Classic'; inv = JSON.parse(localStorage.getItem('clash-inv') || '{}');
 } catch (e) {}
 let introT = 0;
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], chests = [], sharks = [], sharkTimers = [], fireballs = [], fireCD = 0, bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], coinList = [], chests = [], humans = [], sharks = [], sharkTimers = [], fireballs = [], fireCD = 0, bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -197,7 +199,7 @@ function updateSharks(dt) {
       if (!s.alive) continue;
       s.biteCD = Math.max(0, (s.biteCD || 0) - dt / Math.max(1, sharks.length));
       const reach = SHARK_R + radius(s) * 0.6;
-      for (let i = 0; i < s.segs.length; i++) {
+      for (let i = 0; i < (s.human > 0 ? 1 : s.segs.length); i++) {
         const g = s.segs[i];
         if (Math.abs(g.x - head.x) < reach && Math.abs(g.y - head.y) < reach && Math.hypot(g.x - head.x, g.y - head.y) < reach) { sharkBite(s, i); break; }
       }
@@ -242,6 +244,11 @@ function updateFireballs(dt) {
   }
 }
 
+function newHuman() {
+  const p = freeSpot(150, 50);
+  return {x: p.x, y: p.y, angle: rand(0, Math.PI * 2), ph: rand(0, 6), shirt: pick(['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ec4899']), hair: pick(['#3b2a1a', '#111827', '#b45309', '#fbbf24'])};
+}
+
 function newDisco() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
@@ -258,7 +265,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0, routine: 0, bathCD: 0, shield: 0, shieldMax: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0, routine: 0, bathCD: 0, shield: 0, shieldMax: 0, human: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -292,6 +299,7 @@ function start() {
   discos = []; for (let i = 0; i < DISCO_COUNT; i++) discos.push(newDisco());
   bath = makeBath();
   chests = []; for (let i = 0; i < CHEST_COUNT; i++) chests.push(newChest());
+  humans = []; for (let i = 0; i < HUMAN_COUNT; i++) humans.push(newHuman());
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -404,6 +412,11 @@ function steerBot(s, dt) {
 
 function update(dt) {
   fireCD = Math.max(0, fireCD - dt);
+  for (const hm of humans) {                          // the little people stroll around
+    hm.angle += Math.sin(performance.now() / 900 + hm.ph) * dt * 1.2;
+    if (Math.hypot(hm.x, hm.y) > WORLD_R - 200) hm.angle = Math.atan2(-hm.y, -hm.x);
+    hm.x += Math.cos(hm.angle) * HUMAN_SPEED * dt; hm.y += Math.sin(hm.angle) * HUMAN_SPEED * dt;
+  }
   for (let i = 0; i < chests.length; i++) {          // an opened chest fades away and a new one appears elsewhere
     if (chests[i].open > 0) { chests[i].open -= dt; if (chests[i].open <= 0) chests[i] = newChest(); }
   }
@@ -414,6 +427,10 @@ function update(dt) {
     if (!s.alive) continue;
     if (s.dance > 0) s.dance = Math.max(0, s.dance - dt);
     if (s.shield > 0) s.shield = Math.max(0, s.shield - dt);
+    if (s.human > 0) {
+      s.human = Math.max(0, s.human - dt);
+      if (s.human === 0 && s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '🐍 Back to a snake!', t: performance.now()});
+    }
     if (s.sleep > 0) {                       // asleep: frozen until the timer runs out
       s.sleep -= dt; s.boost = false;
       if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
@@ -522,6 +539,14 @@ function update(dt) {
         if (Math.hypot(c.x - h.x, c.y - h.y) < COIN_R + r + 8) { coinList.splice(i, 1); wallet++; saveShop(); }
       }
     }
+    if (!s.sleep) {
+      const hi = humans.findIndex(hm => Math.hypot(hm.x - h.x, hm.y - h.y) < HUMAN_R + r);
+      if (hi >= 0) {
+        s.human = HUMAN_TIME;
+        if (s === player) pops.push({x: h.x, y: h.y, text: '🧑 You turned into a human!', t: performance.now()});
+        humans[hi] = newHuman();
+      }
+    }
     s.bathCD = Math.max(0, s.bathCD - dt);
     if (!s.sleep && !s.routine && !s.bathCD && Math.hypot(h.x - bath.x, h.y - bath.y) < BATH_R + r*0.3) {
       s.routine = ROUTINE_TOTAL; s.boost = false;
@@ -530,7 +555,7 @@ function update(dt) {
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && !s.shield && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
     for (const o of snakes) {
-      if (o === s || !o.alive) continue;
+      if (o === s || !o.alive || o.human > 0) continue;
       const lim = radius(o) + r * 0.6;
       let hit = false;
       for (let i = 1; i < o.segs.length; i++) {
@@ -752,6 +777,24 @@ function drawChest(px, py, pr, openLeft) {
   }
 }
 
+function drawHuman(px, py, pr, shirt, hair, ph) {
+  const u = pr * 0.55, tn = performance.now(), sw = Math.sin(tn / 130 + ph);
+  ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(px, py + 4.2 * u, 2.2 * u, .7 * u, 0, 0, Math.PI*2); ctx.fill();
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#1e3a8a'; ctx.lineWidth = 1.1 * u; ctx.beginPath();                                    // legs (walking)
+  ctx.moveTo(px - .7 * u, py + 1.4 * u); ctx.lineTo(px - .7 * u + sw * .9 * u, py + 4 * u);
+  ctx.moveTo(px + .7 * u, py + 1.4 * u); ctx.lineTo(px + .7 * u - sw * .9 * u, py + 4 * u); ctx.stroke();
+  ctx.strokeStyle = '#fcd9b6'; ctx.lineWidth = .9 * u; ctx.beginPath();                                     // arms
+  ctx.moveTo(px - 1.5 * u, py - 1.3 * u); ctx.lineTo(px - 2.1 * u - sw * .6 * u, py + .9 * u);
+  ctx.moveTo(px + 1.5 * u, py - 1.3 * u); ctx.lineTo(px + 2.1 * u + sw * .6 * u, py + .9 * u); ctx.stroke();
+  ctx.lineCap = 'butt';
+  ctx.fillStyle = shirt; ctx.beginPath(); ctx.moveTo(px - 1.5 * u, py - 1.7 * u); ctx.lineTo(px + 1.5 * u, py - 1.7 * u); ctx.lineTo(px + 1.3 * u, py + 1.5 * u); ctx.lineTo(px - 1.3 * u, py + 1.5 * u); ctx.closePath(); ctx.fill();   // shirt
+  ctx.fillStyle = '#fcd9b6'; ctx.beginPath(); ctx.arc(px, py - 3.1 * u, 1.4 * u, 0, Math.PI*2); ctx.fill();   // head
+  ctx.fillStyle = hair; ctx.beginPath(); ctx.arc(px, py - 3.2 * u, 1.5 * u, Math.PI, 0); ctx.fill();          // hair
+  ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(px - .5 * u, py - 3 * u, .17 * u, 0, Math.PI*2); ctx.arc(px + .5 * u, py - 3 * u, .17 * u, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#7f1d1d'; ctx.lineWidth = Math.max(1, .16 * u); ctx.beginPath(); ctx.arc(px, py - 2.75 * u, .5 * u, .15 * Math.PI, .85 * Math.PI); ctx.stroke();   // smile
+}
+
 function drawFireball(px, py, pr) {
   const tn = performance.now();
   for (let i = 3; i >= 1; i--) { ctx.fillStyle = 'rgba(251,146,60,' + (0.2 * (4 - i)) + ')'; ctx.beginPath(); ctx.arc(px + Math.sin(tn / 60 + i) * pr * .2, py + i * pr * .5, pr * (1.1 - i * .12), 0, Math.PI*2); ctx.fill(); }
@@ -852,6 +895,11 @@ function draw() {
   for (const s of snakes) {
     if (!s.alive) continue;
     const r = radius(s);
+    if (s.human > 0) {                                           // a human: one walking person instead of the long body
+      const hp = project(s.segs[0].x, s.segs[0].y, r * 2.4);
+      if (hp) items.push({d: hp.depth, p: hp, r: r * 1.5, human: true, shirt: s.palette[s.palette.length > 1 ? 1 : 0], hair: '#3b2a1a', ph: s.segs.length, snake: s, gx: s.segs[0].x, gy: s.segs[0].y});
+      continue;
+    }
     const skn = SKIN_BY_NAME[s.skinName], txt = skn && skn.text;
     const dancing = s.dance > 0, tn = performance.now(), blocky = !!(SKIN_BY_NAME[s.skinName] && SKIN_BY_NAME[s.skinName].blocky);
     for (let i = s.segs.length - 1; i >= 0; i--) {
@@ -879,6 +927,10 @@ function draw() {
   }
   for (const f of fireballs) {
     const p = project(f.x, f.y, 26); if (p) items.push({d: p.depth, p, r: FB_R, fire: true, gx: f.x, gy: f.y});
+  }
+  for (const hm of humans) {
+    if (Math.abs(hm.x - cam.x) > span || Math.abs(hm.y - cam.y) > span) continue;
+    const p = project(hm.x, hm.y, 32); if (p) items.push({d: p.depth, p, r: HUMAN_R * 1.3, human: true, shirt: hm.shirt, hair: hm.hair, ph: hm.ph, gx: hm.x, gy: hm.y});
   }
   for (const c of chests) {
     if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
@@ -909,6 +961,14 @@ function draw() {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
     if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
+    if (it.human) {
+      drawHuman(it.p.x, it.p.y, pr, it.shirt, it.hair, it.ph);
+      if (it.snake) {
+        ctx.font = 'bold ' + Math.max(12, pr * .9) + 'px system-ui'; ctx.textAlign = 'center'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#fff';
+        const nm = it.snake.name + ' 🧑 ' + Math.ceil(it.snake.human) + 's'; ctx.strokeText(nm, it.p.x, it.p.y - pr * 2.6); ctx.fillText(nm, it.p.x, it.p.y - pr * 2.6);
+      }
+      continue;
+    }
     if (it.fire) { drawFireball(it.p.x, it.p.y, pr); continue; }
     if (it.chest) {
       const gp = project(it.gx, it.gy, 0);
@@ -982,7 +1042,7 @@ function draw() {
     ctx.globalAlpha = it.food ? .95 : 1;
     if (it.blocky) blockSeg(it.p.x, it.p.y, pr, it.color); else sphere(it.p.x, it.p.y, pr, it.color);
     if (it.letter && pr > 5) {                          // one letter of the name, on the upper half where the next ball does not cover it
-      ctx.font = 'bold ' + pr * 1.15 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = 'bold ' + pr * 1.5 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.lineWidth = Math.max(1.5, pr * .16); ctx.strokeStyle = 'rgba(60,10,90,.85)'; ctx.fillStyle = '#fff';
       ctx.strokeText(it.letter, it.p.x, it.p.y - pr * .15); ctx.fillText(it.letter, it.p.x, it.p.y - pr * .15); ctx.textBaseline = 'alphabetic';
     }
@@ -1031,7 +1091,15 @@ function draw() {
         ['🎵', '🎶', '✨'].forEach((e, j) => ctx.fillText(e, it.p.x + Math.cos(tm + j * 2.1) * pr * 2.3, it.p.y - pr * 1.8 - Math.abs(Math.sin(tm * 1.3 + j)) * pr * 1.8));
       }
       const lp = project(it.gx, it.gy, (it.z || it.r) + it.r*1.6);
-      if (lp) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.textAlign = 'center'; ctx.fillText(s.name + (s.sleep > 0 ? ' 💤 ' + Math.ceil(s.sleep) + 's' : '') + (s.dance > 0 ? ' 🕺 ' + Math.ceil(s.dance) + 's' : ''), lp.x, lp.y); }
+      if (lp) {
+        const skn2 = SKIN_BY_NAME[s.skinName], named = skn2 && skn2.text;
+        const extra = (s.sleep > 0 ? ' 💤 ' + Math.ceil(s.sleep) + 's' : '') + (s.dance > 0 ? ' 🕺 ' + Math.ceil(s.dance) + 's' : '') + (s.human > 0 ? ' 🧑 ' + Math.ceil(s.human) + 's' : '');
+        ctx.textAlign = 'center';
+        if (named) {       // a big name label above the head for skins that have a name printed on them
+          ctx.font = 'bold ' + Math.max(18, 30 * lp.k * 1.6) + 'px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(60,10,90,.9)'; ctx.fillStyle = '#fff';
+          ctx.strokeText(skn2.text + extra, lp.x, lp.y - 6); ctx.fillText(skn2.text + extra, lp.x, lp.y - 6);
+        } else { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.font = Math.max(10, 13*lp.k*1.6) + 'px system-ui'; ctx.fillText(s.name + extra, lp.x, lp.y); }
+      }
     }
   }
 
@@ -1140,6 +1208,8 @@ function drawHud() {
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
   ctx.font = '15px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🛁', mx + bath.x/WORLD_R*mr, my + bath.y/WORLD_R*mr + 5);
+  ctx.fillStyle = '#fcd9b6';
+  for (const hm of humans) { ctx.beginPath(); ctx.arc(mx + hm.x/WORLD_R*mr, my + hm.y/WORLD_R*mr, 2.2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#ef4444';
   for (const sh of sharks) { ctx.beginPath(); ctx.arc(mx + sh.segs[0].x/WORLD_R*mr, my + sh.segs[0].y/WORLD_R*mr, 3.2, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#fbbf24';
@@ -1313,7 +1383,7 @@ function drawShop() {
     for (let i = 0; i < n; i++) {
       const px = x1 + (x2 - x1) * i / (n - 1), py = c.y + c.h * .3 + Math.sin(tn / 400 + i * .6) * 4;
       if (it.blocky) blockSeg(px, py, pr, pal[(n - 1 - i) % pal.length]); else sphere(px, py, pr, pal[(n - 1 - i) % pal.length]);
-      if (it.text && i < n - 1 && i % 2 === 0) { ctx.font = 'bold ' + pr * 1.15 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,10,90,.85)'; ctx.fillStyle = '#fff'; const ch = it.text[((n - 1 - i) / 2) % it.text.length]; ctx.strokeText(ch, px, py - pr * .1); ctx.fillText(ch, px, py - pr * .1); ctx.textBaseline = 'alphabetic'; }
+      if (it.text && i < n - 1 && i % 2 === 0) { ctx.font = 'bold ' + pr * 1.5 + 'px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(60,10,90,.85)'; ctx.fillStyle = '#fff'; const ch = it.text[((n - 1 - i) / 2) % it.text.length]; ctx.strokeText(ch, px, py - pr * .1); ctx.fillText(ch, px, py - pr * .1); ctx.textBaseline = 'alphabetic'; }
       if (i === n - 1) {
         if (it.ears) for (const sd of [-1, 1]) { ctx.fillStyle = pal[0]; ctx.beginPath(); ctx.moveTo(px + sd * pr * .1, py - pr * .7); ctx.lineTo(px + sd * pr * .75, py - pr * 1.8); ctx.lineTo(px + sd * pr * 1.0, py - pr * .5); ctx.closePath(); ctx.fill(); }
         ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px + pr * .3, py - pr * .25, pr * .28, 0, Math.PI*2); ctx.fill();
