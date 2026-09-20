@@ -180,16 +180,24 @@ function updateSharks(dt) {
       sh.think = 0.3; sh.prey = null;
       let bd = SHARK_SIGHT;
       for (const s of snakes) {
-        if (!s.alive) continue;
+        if (!s.alive || s.human > 0) continue;
         const d = Math.hypot(s.segs[0].x - head.x, s.segs[0].y - head.y) * (s === player ? 0.7 : 1);   // sharks like the player best
         if (d < bd) { bd = d; sh.prey = s; }
       }
     }
+    let scary = null, sd = 520;                      // a human within range scares the shark
+    for (const s of snakes) {
+      if (!s.alive || !(s.human > 0)) continue;
+      const d = Math.hypot(s.segs[0].x - head.x, s.segs[0].y - head.y);
+      if (d < sd) { sd = d; scary = s; }
+    }
+    sh.scared = !!scary;
     if (Math.hypot(head.x, head.y) > WORLD_R - 200) sh.target = Math.atan2(-head.y, -head.x);
+    else if (scary) sh.target = Math.atan2(head.y - scary.segs[0].y, head.x - scary.segs[0].x);   // swim away
     else if (sh.prey && sh.prey.alive) sh.target = Math.atan2(sh.prey.segs[0].y - head.y, sh.prey.segs[0].x - head.x);
     else sh.target = sh.angle + Math.sin(performance.now() / 1200 + sh.wob) * 0.7;
     sh.angle = normAngle(sh.angle + Math.max(-SHARK_TURN * dt, Math.min(SHARK_TURN * dt, normAngle(sh.target - sh.angle))));
-    const speed = sh.prey ? SHARK_HUNT : SHARK_SPEED;
+    const speed = scary ? SHARK_HUNT * 1.15 : sh.prey ? SHARK_HUNT : SHARK_SPEED;
     head.x += Math.cos(sh.angle) * speed * dt; head.y += Math.sin(sh.angle) * speed * dt;
     for (let i = 1; i < sh.segs.length; i++) {
       const a = sh.segs[i - 1], b = sh.segs[i], dx = a.x - b.x, dy = a.y - b.y, d = Math.hypot(dx, dy);
@@ -198,6 +206,7 @@ function updateSharks(dt) {
     for (const s of snakes) {
       if (!s.alive) continue;
       s.biteCD = Math.max(0, (s.biteCD || 0) - dt / Math.max(1, sharks.length));
+      if (s.human > 0) continue;                     // sharks will not touch a human
       const reach = SHARK_R + radius(s) * 0.6;
       for (let i = 0; i < (s.human > 0 ? 1 : s.segs.length); i++) {
         const g = s.segs[i];
@@ -547,7 +556,7 @@ function update(dt) {
       const hi = humans.findIndex(hm => Math.hypot(hm.x - h.x, hm.y - h.y) < HUMAN_R + r);
       if (hi >= 0) {
         s.human = HUMAN_TIME;
-        if (s === player) pops.push({x: h.x, y: h.y, text: '🧑 You turned into a human!', t: performance.now()});
+        if (s === player) pops.push({x: h.x, y: h.y, text: '🧑 You turned into a human! The sharks are scared 🦈😨', t: performance.now()});
         humans[hi] = newHuman();
       }
     }
@@ -1029,6 +1038,7 @@ function draw() {
       sphere(it.p.x, it.p.y, pr, it.color);
       if (k === 4) { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(it.p.x - pr * .6, it.p.y - pr * .7); ctx.lineTo(it.p.x - pr * .1, it.p.y - pr * 2.4); ctx.lineTo(it.p.x + pr * .7, it.p.y - pr * .7); ctx.closePath(); ctx.fill(); }      // dorsal fin
       if (k === sh.segs.length - 1) { ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.moveTo(it.p.x, it.p.y); ctx.lineTo(it.p.x - pr * 1.6, it.p.y - pr * 2.6); ctx.lineTo(it.p.x + pr * 1.6, it.p.y - pr * 2.6); ctx.closePath(); ctx.fill(); }   // tail
+      if (k === 0 && sh.scared) { ctx.font = Math.max(16, pr * 2.2) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('😨', it.p.x, it.p.y - pr * 2.8 - Math.abs(Math.sin(performance.now() / 120)) * pr * .3); }
       if (k === 0) {
         const ex = Math.cos(sh.angle + Math.PI / 2), ey = Math.sin(sh.angle + Math.PI / 2), fx = Math.cos(sh.angle), fy = Math.sin(sh.angle);
         for (const side of [-1, 1]) {
@@ -1182,7 +1192,7 @@ function drawHud() {
     ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#bae6fd';
     ctx.strokeText('🛡️ PROTECTED ' + Math.ceil(player.shield) + 's', W / 2, 100); ctx.fillText('🛡️ PROTECTED ' + Math.ceil(player.shield) + 's', W / 2, 100);
   }
-  if (state === 'play' && player.alive && sharks.some(sh => Math.hypot(sh.segs[0].x - player.segs[0].x, sh.segs[0].y - player.segs[0].y) < 380)) {
+  if (state === 'play' && player.alive && !(player.human > 0) && sharks.some(sh => Math.hypot(sh.segs[0].x - player.segs[0].x, sh.segs[0].y - player.segs[0].y) < 380)) {
     const pulse = 0.7 + Math.sin(performance.now() / 120) * 0.3;
     ctx.textAlign = 'center'; ctx.font = 'bold 34px system-ui'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.fillStyle = 'rgba(248,113,113,' + pulse + ')';
     ctx.strokeText('🦈 SHARK NEARBY! 🔥', W / 2, 60); ctx.fillText('🦈 SHARK NEARBY! 🔥', W / 2, 60);
