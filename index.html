@@ -26,6 +26,7 @@ const FRUITS = {
   mango:  {v: 4, n: 15, r: 13, color: '#fbbf24'},   // 20 points
 };
 const BASE_SPEED = 85, BOOST_SPEED = 160, TURN = 3.6, MIN_BOOST_LEN = 12;
+const SPEED_MS = 1;   // your snake: milliseconds it takes to move 1 pixel (smaller = faster; about 12 is the old speed)
 const COLORS = ['#34d399','#f87171','#60a5fa','#fbbf24','#c084fc','#f472b6','#2dd4bf','#fb923c','#a3e635','#38bdf8'];
 const NAMES = ['Viper','Mamba','Cobra','Slinky','Noodle','Python','Rattler','Asp','Boa','Fang','Zig','Zag','Nagini','Basil','Hiss','Coil'];
 
@@ -272,7 +273,7 @@ function update(dt) {
     if (s.boost && s.segs.length <= MIN_BOOST_LEN) s.boost = false;
 
     s.angle = normAngle(s.angle + Math.max(-TURN*dt, Math.min(TURN*dt, normAngle(s.target - s.angle))));
-    const speed = s.boost ? BOOST_SPEED : BASE_SPEED;
+    const speed = s.bot ? (s.boost ? BOOST_SPEED : BASE_SPEED) : (1000 / SPEED_MS) * (s.boost ? 1.9 : 1);
     const head = s.segs[0];
     head.x += Math.cos(s.angle) * speed * dt;
     head.y += Math.sin(s.angle) * speed * dt;
