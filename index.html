@@ -18,7 +18,7 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 45, ROUTINE_STEP = 2;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 65, ROUTINE_STEP = 2;
 // Touch the bathtub and you do everything you do in a morning, one step after another
 const MORNING = [
   {e: '🥱', t: 'Waking up and stretching'},
@@ -116,9 +116,13 @@ function newBlanket() {
   return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
 }
 
-function makeBath() {
+function makeBath() {          // close to the middle, so it is easy to find
   let p;
-  for (let i = 0; i < 40; i++) { p = freeSpot(200, 70); if (Math.hypot(p.x, p.y) > 500) break; }
+  for (let i = 0; i < 60; i++) {
+    const a = rand(0, Math.PI*2), d = rand(300, 500);
+    p = {x: Math.cos(a) * d, y: Math.sin(a) * d};
+    if (hazards.every(h => Math.hypot(h.x - p.x, h.y - p.y) > h.r + 110)) break;
+  }
   return p;
 }
 
@@ -173,6 +177,7 @@ function start() {
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
+  for (let i = 0; i < 20 && Math.hypot(player.segs[0].x - bath.x, player.segs[0].y - bath.y) < 250; i++) bath = makeBath();   // never start on top of it
   for (let i = 0; i < BOT_COUNT; i++) snakes.push(makeSnake(pick(NAMES), pick(COLORS), true, Math.floor(rand(8, 30))));
   fillFood();
   state = 'intro'; introT = 0;   // every game starts at the office
@@ -809,7 +814,25 @@ function drawMuteButton() {
 }
 const onMuteBtn = (x, y) => { const b = muteBtn(); return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; };
 
+// A 🛁 marker at the edge of the screen that points to the bathtub whenever it is out of view
+function drawBathPointer() {
+  const m = 40, p = project(bath.x, bath.y, 22);
+  if (p && p.x > m && p.x < W - m && p.y > m && p.y < H - m) return;
+  const h = player.segs[0], rel = Math.atan2(bath.y - h.y, bath.x - h.x) - camAngle;
+  const dx = Math.sin(rel), dy = -Math.cos(rel);
+  const k = Math.min((W / 2 - 50) / (Math.abs(dx) || 1e-6), (H / 2 - 60) / (Math.abs(dy) || 1e-6));
+  const pulse = 1 + Math.sin(performance.now() / 250) * .08;
+  ctx.save(); ctx.translate(W / 2 + dx * k, H / 2 + dy * k); ctx.scale(pulse, pulse);
+  ctx.fillStyle = 'rgba(14,116,144,.8)'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(0, 0, 26, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  ctx.rotate(Math.atan2(dx, -dy)); ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.moveTo(0, -42); ctx.lineTo(11, -29); ctx.lineTo(-11, -29); ctx.closePath(); ctx.fill();
+  ctx.rotate(-Math.atan2(dx, -dy)); ctx.font = '26px serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('🛁', 0, 2);
+  ctx.restore(); ctx.textBaseline = 'alphabetic';
+}
+
 function drawHud() {
+  if (state === 'play' && player.alive) drawBathPointer();
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + fmt(score(player)), 20, 36);
   ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.7)';
