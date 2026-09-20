@@ -18,7 +18,16 @@ let W, H;
 function resize() { W = canvas.width = innerWidth; H = canvas.height = innerHeight; }
 addEventListener('resize', resize); resize();
 
-const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3;
+const WORLD_R = 2200, FOOD_COUNT = 500, BOT_COUNT = 14, SHRUB_COUNT = 30, CACTUS_COUNT = 18, CACTUS_R = 22, CACTUS_H = 95, CACTUS_LOSS = 6, CACTUS_KILLS = 20, CACTUS_BUSH_GAP = 300, BLANKET_COUNT = 12, BLANKET_R = 34, SLEEP_TIME = 10, GIFT_COUNT = 10, GIFT_R = 20, DISCO_COUNT = 6, DISCO_R = 24, DANCE_TIME = 15, INTRO_WORK = 3, INTRO_NAP = 3, BATH_R = 45, ROUTINE_STEP = 2;
+// Touch the bathtub and you do everything you do in a morning, one step after another
+const MORNING = [
+  {e: '🥱', t: 'Waking up and stretching'},
+  {e: '🛁', t: 'Taking a bath'},
+  {e: '🪥', t: 'Brushing teeth'},
+  {e: '🥣', t: 'Eating breakfast'},
+  {e: '👕', t: 'Getting dressed'},
+];
+const ROUTINE_TOTAL = ROUTINE_STEP * MORNING.length;
 // Fruit points = v * 5 (a snake segment is worth 10 points, and each fruit gives v/2 segments)
 const FRUITS = {
   watermelon: {v: 40, n: 4, r: 17, color: '#22c55e'},   // 200 points, and 20 segments of growth
@@ -48,7 +57,7 @@ const SKINS = [
 ];
 
 let introT = 0;
-let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], pops = [], deathMsg = 'You got clashed!';
+let shrubs = [], cacti = [], hazards = [], blankets = [], gifts = [], discos = [], bath = {x: 0, y: 0}, pops = [], deathMsg = 'You got clashed!';
 let best = 0;
 try { best = +localStorage.getItem('clash-best') || 0; } catch (e) {}
 
@@ -107,6 +116,12 @@ function newBlanket() {
   return {x: p.x, y: p.y, r: BLANKET_R, a: rand(0, Math.PI), color: pick(['#f472b6','#60a5fa','#fbbf24','#a78bfa','#34d399'])};
 }
 
+function makeBath() {
+  let p;
+  for (let i = 0; i < 40; i++) { p = freeSpot(200, 70); if (Math.hypot(p.x, p.y) > 500) break; }
+  return p;
+}
+
 function newDisco() {
   const p = freeSpot(150, 50);
   return {x: p.x, y: p.y, r: DISCO_R, ph: rand(0, 6)};
@@ -123,7 +138,7 @@ function makeSnake(name, color, bot, len = 10) {
   for (let i = 0; i < len; i++) segs.push({x: p.x - Math.cos(angle)*i*8, y: p.y - Math.sin(angle)*i*8});
   return {name, color, bot, segs, angle, target: angle, grow: 0, boost: false, boostAcc: 0,
           alive: true, wander: rand(-1, 1), think: 0, goal: null, kills: 0, sleep: 0, wary: Math.random() < 0.6,
-          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0};
+          palette: [shade(color, -18), color], skinName: null, dance: 0, bonus: 0, routine: 0, bathCD: 0};
 }
 
 const radius = s => 7 + Math.min(10, s.segs.length / 25);
@@ -154,6 +169,7 @@ function start() {
   blankets = []; for (let i = 0; i < BLANKET_COUNT; i++) blankets.push(newBlanket());
   gifts = []; for (let i = 0; i < GIFT_COUNT; i++) gifts.push(newGift());
   discos = []; for (let i = 0; i < DISCO_COUNT; i++) discos.push(newDisco());
+  bath = makeBath();
   player = makeSnake('You', '#34d399', false, 12);
   player.segs.forEach(s => { s.x *= 0.3; s.y *= 0.3; });
   snakes.push(player);
@@ -270,6 +286,14 @@ function update(dt) {
       if (s.sleep <= 0) { s.sleep = 0; s.target = s.angle; }
       continue;
     }
+    if (s.routine > 0) {                      // busy with the morning routine
+      s.routine -= dt; s.boost = false;
+      if (s.routine <= 0) {
+        s.routine = 0; s.target = s.angle; s.bathCD = 10;
+        if (s === player) pops.push({x: s.segs[0].x, y: s.segs[0].y, text: '☀️ Ready for the day!', t: performance.now()});
+      }
+      continue;
+    }
     if (s.bot) steerBot(s, dt);
     if (s.boost && s.segs.length <= MIN_BOOST_LEN) s.boost = false;
 
@@ -348,6 +372,11 @@ function update(dt) {
         if (s === player) pops.push({x: h.x, y: h.y, text: '🕺 Dance party!', t: performance.now()});
         discos[di] = newDisco();
       }
+    }
+    s.bathCD = Math.max(0, s.bathCD - dt);
+    if (!s.sleep && !s.routine && !s.bathCD && Math.hypot(h.x - bath.x, h.y - bath.y) < BATH_R + r*0.3) {
+      s.routine = ROUTINE_TOTAL; s.boost = false;
+      if (s === player) pops.push({x: h.x, y: h.y, text: '🛁 Morning routine!', t: performance.now()});
     }
     s.cd = Math.max(0, (s.cd || 0) - dt);
     if (!s.cd && cacti.some(c => Math.hypot(c.x - h.x, c.y - h.y) < c.r * 0.8 + r * 0.5)) hurtByCactus(s);
@@ -520,6 +549,26 @@ function drawDisco(px, py, pr) {
   ctx.fillText('✨', px - Math.cos(tn / 300) * pr * 1.5, py - Math.sin(tn / 300) * pr * .8);
 }
 
+function drawBathtub(px, py, pr) {
+  const tn = performance.now(), w = pr * 2.5, h = pr * 1.2, x = px - w / 2, y = py - h * .35;
+  ctx.fillStyle = '#9ca3af';                                             // feet
+  for (const fx of [-.4, .4]) { ctx.beginPath(); ctx.arc(px + w * fx, y + h * .9, pr * .13, 0, Math.PI*2); ctx.fill(); }
+  const g = ctx.createLinearGradient(0, y, 0, y + h * .85); g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#cbd5e1');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + w, y); ctx.quadraticCurveTo(x + w, y + h * .9, x + w * .8, y + h * .9);
+  ctx.lineTo(x + w * .2, y + h * .9); ctx.quadraticCurveTo(x, y + h * .9, x, y); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e2e8f0'; ctx.beginPath(); ctx.ellipse(px, y, w / 2, h * .2, 0, 0, Math.PI*2); ctx.fill();   // rim
+  ctx.fillStyle = '#7dd3fc'; ctx.beginPath(); ctx.ellipse(px, y + h * .02, w * .43, h * .15, 0, 0, Math.PI*2); ctx.fill();   // water
+  ctx.fillStyle = '#9ca3af'; ctx.fillRect(x + w * .08, y - h * .55, pr * .16, h * .45); ctx.fillRect(x + w * .08, y - h * .55, pr * .5, pr * .14);   // tap
+  ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(x + w * .08 + pr * .44, y - h * .35 + ((tn / 200) % 4) * pr * .08, pr * .06, 0, Math.PI*2); ctx.fill();
+  for (let i = 0; i < 6; i++) {                                          // bubbles
+    const k = ((tn / 1800) + i / 6) % 1, bx = px + Math.sin(i * 2.3) * w * .3, by = y - k * h * 1.1;
+    ctx.globalAlpha = 1 - k; ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(bx, by, pr * (.1 + .06 * (i % 3)), 0, Math.PI*2); ctx.fill(); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.font = Math.max(12, pr * .9) + 'px serif'; ctx.textAlign = 'center'; ctx.fillText('🧼', px + w * .3, y - h * .45);
+}
+
 function drawShrub(px, py, pr, seed) {
   sphere(px, py, pr, '#166534');
   for (let i = 0; i < 7; i++) {
@@ -619,6 +668,9 @@ function draw() {
     if (Math.abs(d.x - cam.x) > span || Math.abs(d.y - cam.y) > span) continue;
     const p = project(d.x, d.y, 55 + Math.sin(performance.now()/400 + d.ph) * 6); if (p) items.push({d: p.depth, p, r: d.r, disco: true, gx: d.x, gy: d.y});
   }
+  if (Math.abs(bath.x - cam.x) < span && Math.abs(bath.y - cam.y) < span) {
+    const p = project(bath.x, bath.y, 22); if (p) items.push({d: p.depth, p, r: BATH_R, bath: true, gx: bath.x, gy: bath.y});
+  }
   for (const c of cacti) {
     if (Math.abs(c.x - cam.x) > span || Math.abs(c.y - cam.y) > span) continue;
     const p = project(c.x, c.y, CACTUS_H * 0.5); if (p) items.push({d: p.depth, p, r: c.r, cactus: true, gx: c.x, gy: c.y});
@@ -629,6 +681,12 @@ function draw() {
     const pr = it.r * it.p.k;
     if (pr < 0.6) continue;
     if (it.cactus) { drawCactus(it.gx, it.gy); continue; }
+    if (it.bath) {
+      const gp = project(it.gx, it.gy, 0);
+      if (gp) { ctx.fillStyle = 'rgba(0,0,0,.28)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr * 1.3, pr * .42, 0, 0, Math.PI*2); ctx.fill(); }
+      drawBathtub(it.p.x, it.p.y, pr);
+      continue;
+    }
     if (it.disco) {
       const gp = project(it.gx, it.gy, 0);
       if (gp) { ctx.fillStyle = 'rgba(255,255,255,.14)'; ctx.beginPath(); ctx.ellipse(gp.x, gp.y, pr*1.1, pr*.4, 0, 0, Math.PI*2); ctx.fill(); }
@@ -675,6 +733,17 @@ function draw() {
           ctx.fillStyle = '#111'; ctx.beginPath(); ctx.arc(ep.x, ep.y, it.r*.15*ep.k, 0, Math.PI*2); ctx.fill();
         }
       }
+      if (s.routine > 0) {
+        const idx = Math.min(MORNING.length - 1, Math.floor((ROUTINE_TOTAL - s.routine) / ROUTINE_STEP)), tm = performance.now();
+        ctx.font = Math.max(20, pr * 2.4) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
+        ctx.fillText(MORNING[idx].e, it.p.x, it.p.y - pr * 3.2 - Math.abs(Math.sin(tm / 250)) * pr * .6);
+        if (idx === 1) for (let j = 0; j < 6; j++) {
+          const k = ((tm / 1200) + j / 6) % 1;
+          ctx.globalAlpha = 1 - k; ctx.strokeStyle = '#7dd3fc'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(it.p.x + Math.sin(j * 2.1 + tm / 500) * pr * 2, it.p.y - k * pr * 3, pr * (.25 + .12 * (j % 3)), 0, Math.PI*2); ctx.fill(); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
       if (s.dance > 0) {
         const tm = performance.now() / 400; ctx.font = Math.max(12, pr * 1.3) + 'px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff';
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.font = 'bold ' + Math.max(11, pr * .95) + 'px system-ui';
@@ -707,6 +776,14 @@ function draw() {
     ctx.font = '18px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillText('Watch out — other snakes can run into you!', W/2, H * 0.22 + 30);
   }
 
+  if (player.alive && player.routine > 0 && state === 'play') {
+    const idx = Math.min(MORNING.length - 1, Math.floor((ROUTINE_TOTAL - player.routine) / ROUTINE_STEP));
+    ctx.fillStyle = 'rgba(255,237,180,.18)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center'; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(0,0,0,.65)'; ctx.fillStyle = '#fff';
+    ctx.font = 'bold 40px system-ui'; ctx.strokeText('☀️ Morning routine', W/2, H * 0.2); ctx.fillText('☀️ Morning routine', W/2, H * 0.2);
+    ctx.font = 'bold 28px system-ui'; const msg = MORNING[idx].e + ' ' + MORNING[idx].t + '… (' + (idx + 1) + '/' + MORNING.length + ')';
+    ctx.strokeText(msg, W/2, H * 0.2 + 42); ctx.fillText(msg, W/2, H * 0.2 + 42);
+  }
   if (player.alive && player.dance > 0 && state === 'play') {
     ctx.globalAlpha = .10; ctx.fillStyle = hsl((Math.floor(now / 150) % 12) * 30); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1;
     ctx.textAlign = 'center'; ctx.font = 'bold 26px system-ui'; ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.fillStyle = '#fff';
@@ -755,6 +832,7 @@ function drawHud() {
   ctx.fillStyle = 'rgba(0,0,0,.4)'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, Math.PI*2); ctx.fill();
   ctx.fillStyle = '#16a34a';
   for (const b of shrubs) { ctx.beginPath(); ctx.arc(mx + b.x/WORLD_R*mr, my + b.y/WORLD_R*mr, 2, 0, Math.PI*2); ctx.fill(); }
+  ctx.font = '15px serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#fff'; ctx.fillText('🛁', mx + bath.x/WORLD_R*mr, my + bath.y/WORLD_R*mr + 5);
   ctx.fillStyle = '#e5e7eb';
   for (const d of discos) { ctx.beginPath(); ctx.arc(mx + d.x/WORLD_R*mr, my + d.y/WORLD_R*mr, 2.5, 0, Math.PI*2); ctx.fill(); }
   ctx.fillStyle = '#f472b6';
@@ -788,9 +866,10 @@ function overlay() {
   ctx.fillText('Blankets 🛏️ put any snake to sleep for 10 seconds · gifts 🎁 change your skin', W/2, H/2 + 92);
   ctx.fillText('Grab a disco ball ✨ to dance and sing for 15 seconds', W/2, H/2 + 116);
   ctx.fillText('Every game starts at the WORK OFFICE: 3 seconds of work, a 3-second nap, then play!', W/2, H/2 + 140);
+  ctx.fillText('Touch the bathtub 🛁 for a whole morning routine', W/2, H/2 + 164);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
-  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
-  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Music button is at the bottom-left (or press M)', W/2, H/2 + 192);
+  ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 190);
+  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Music button is at the bottom-left (or press M)', W/2, H/2 + 216);
 }
 
 // ---------- input ----------
