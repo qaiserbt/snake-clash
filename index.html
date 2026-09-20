@@ -704,6 +704,22 @@ function draw() {
   drawHud();
 }
 
+// On-screen music button (bottom-left): click or tap it, or press M
+const muteBtn = () => ({x: 16, y: H - 58, w: 158, h: 42});
+function toggleMute() { muted = !muted; musicMode = 'changed'; }   // the next frame applies it
+function drawMuteButton() {
+  const b = muteBtn(), r = 12;
+  ctx.beginPath(); ctx.moveTo(b.x + r, b.y); ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + b.h, r); ctx.arcTo(b.x + b.w, b.y + b.h, b.x, b.y + b.h, r);
+  ctx.arcTo(b.x, b.y + b.h, b.x, b.y, r); ctx.arcTo(b.x, b.y, b.x + b.w, b.y, r); ctx.closePath();
+  ctx.fillStyle = muted ? 'rgba(127,29,29,.75)' : 'rgba(0,0,0,.55)'; ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2; ctx.stroke();
+  ctx.font = 'bold 17px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+  ctx.fillText(muted ? '🔇 Music off' : '🔊 Music on', b.x + b.w / 2 - 12, b.y + b.h / 2 + 1);
+  ctx.font = '12px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.65)'; ctx.fillText('M', b.x + b.w - 16, b.y + b.h / 2 + 1);
+  ctx.textBaseline = 'alphabetic';
+}
+const onMuteBtn = (x, y) => { const b = muteBtn(); return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h; };
+
 function drawHud() {
   ctx.textAlign = 'left'; ctx.fillStyle = '#fff'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Score ' + score(player), 20, 36);
@@ -744,6 +760,7 @@ function drawHud() {
   }
 
   if (state !== 'play') overlay();
+  drawMuteButton();
 }
 
 function overlay() {
@@ -761,7 +778,7 @@ function overlay() {
   ctx.fillText('Every game starts at the WORK OFFICE: 3 seconds of work, a 3-second nap, then play!', W/2, H/2 + 140);
   ctx.fillStyle = '#34d399'; ctx.font = 'bold 22px system-ui';
   ctx.fillText('Click or press Enter to ' + (state === 'dead' ? 'play again' : 'play'), W/2, H/2 + 166);
-  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Press M to turn the music on or off', W/2, H/2 + 192);
+  ctx.font = '14px system-ui'; ctx.fillStyle = 'rgba(255,255,255,.6)'; ctx.fillText('Music button is at the bottom-left (or press M)', W/2, H/2 + 192);
 }
 
 // ---------- input ----------
@@ -773,14 +790,17 @@ function steer(dx) {
   player.target = normAngle(player.angle + Math.max(-1.4, Math.min(1.4, off)));
 }
 addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; steer(e.movementX); });
-addEventListener('mousedown', () => {
+let lastTouchAt = -1e9;
+addEventListener('mousedown', e => {
+  if (performance.now() - lastTouchAt < 800) return;          // a tap already handled this
+  if (document.pointerLockElement !== canvas && onMuteBtn(e.clientX, e.clientY)) { unlockAudio(); toggleMute(); return; }
   mouse.down = true; unlockAudio(); if (state === 'menu' || state === 'dead') start();
   try { if (document.pointerLockElement !== canvas) canvas.requestPointerLock(); } catch (e) {}
 });
 addEventListener('mouseup', () => { mouse.down = false; });
 addEventListener('keydown', e => {
   if (e.key === 'Enter') unlockAudio();
-  if (e.key === 'm' || e.key === 'M') { muted = !muted; musicMode = 'changed'; }   // the next frame applies it
+  if (e.key === 'm' || e.key === 'M') toggleMute();
   if (e.key === 'Enter' && state === 'intro') introT = INTRO_WORK + INTRO_NAP;     // skip the office
   else if (e.key === 'Enter' && state !== 'play') start();
   if (e.key === ' ') { e.preventDefault(); mouse.down = true; }
@@ -789,7 +809,11 @@ addEventListener('keyup', e => { if (e.key === ' ') mouse.down = false; });
 let lastTouchX = null;
 addEventListener('touchmove', e => { const t = e.touches[0]; if (lastTouchX !== null) steer(t.clientX - lastTouchX); lastTouchX = t.clientX; e.preventDefault(); }, {passive:false});
 addEventListener('touchend', () => { lastTouchX = null; });
-addEventListener('touchstart', e => { lastTouchX = e.touches[0].clientX; unlockAudio(); if (state === 'menu' || state === 'dead') start(); });
+addEventListener('touchstart', e => {
+  lastTouchAt = performance.now(); lastTouchX = e.touches[0].clientX; unlockAudio();
+  if (onMuteBtn(e.touches[0].clientX, e.touches[0].clientY)) { toggleMute(); lastTouchX = null; return; }
+   if (state === 'menu' || state === 'dead') start();
+});
 
 // ---------- intro: the office ----------
 function drawIntro() {
